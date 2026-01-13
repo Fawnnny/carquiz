@@ -4,6 +4,8 @@ account_id = "14c64b780e17a5ec80b08c205e448237"
 workers_dev = true
 route = ""
 zone_id = ""
+# main 字段指向你的入口文件
+main = "worker.js"
 
 # KV 命名空间绑定
 kv_namespaces = [
@@ -24,5 +26,3 @@ crons = ["0 0 * * *"]
 
 # 兼容性日期
 compatibility_date = "2025-01-01"
-# main 字段指向你的入口文件
-main = "worker.js"
