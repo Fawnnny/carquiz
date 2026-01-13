@@ -10,7 +10,7 @@ const API_CONFIG = {
     CF_WORKER_URL: 'https://carquiz-a35.pages.dev/', // 确保这个URL指向你的Worker
     
     // 本地模拟模式（当没有真实API时使用）
-    SIMULATION_MODE: true, // 设置为false以使用真实的KV存储
+    SIMULATION_MODE: false, // 设置为false以使用真实的KV存储
     
     // 请求超时时间（毫秒）
     TIMEOUT: 10000
@@ -795,4 +795,5 @@ window.escapeRustCobaltCityAPI = {
 // 输出加载信息
 console.log('逃离锈钴城API已加载');
 console.log('模拟模式:', API_CONFIG.SIMULATION_MODE);
+
 console.log('Cloudflare Worker URL:', API_CONFIG.CF_WORKER_URL);
