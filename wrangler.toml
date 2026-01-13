@@ -1,0 +1,26 @@
+name = "escape-rust-cobalt-city-worker"
+type = "javascript"
+account_id = "your-account-id"
+workers_dev = true
+route = ""
+zone_id = ""
+
+# KV 命名空间绑定
+kv_namespaces = [
+  { binding = "PLAYERS", id = "your-players-kv-id", preview_id = "your-players-kv-preview-id" },
+  { binding = "RANKINGS", id = "your-rankings-kv-id", preview_id = "your-rankings-kv-preview-id" },
+  { binding = "HONOR", id = "your-honor-kv-id", preview_id = "your-honor-kv-preview-id" }
+]
+
+# 环境变量（可选）
+[vars]
+GAME_NAME = "逃离锈钴城"
+MAX_RANKINGS = "100"
+MAX_HONOR = "50"
+
+# Cron Trigger（每日 UTC 00:00 执行）
+[triggers]
+crons = ["0 0 * * *"]
+
+# 兼容性日期
+compatibility_date = "2024-01-01"
