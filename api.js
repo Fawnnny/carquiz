@@ -7,7 +7,7 @@ const API_CONFIG = {
     AI_API_KEY: 'sk-example-api-key-1234567890abcdef', // 替换为实际的API密钥
     
     // Cloudflare Worker URL（根据实际情况修改）
-    CF_WORKER_URL: 'https://escape.893747278.workers.dev',
+    CF_WORKER_URL: 'https://carquiz-a35.pages.dev/',
     
     // 本地模拟模式（当没有真实API时使用）
     SIMULATION_MODE: true,

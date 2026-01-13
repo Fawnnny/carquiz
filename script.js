@@ -388,8 +388,16 @@ function initGame() {
     // 添加每日状态检查
     TimeUtils.checkAndResetDaily();
     
-    // 显示创建角色界面
-    switchScreen('creation');
+    // 检查是否有保存的游戏状态
+    if (GameState.isGameActive && GameState.player) {
+        // 如果有活跃的游戏状态，直接进入主界面
+        switchScreen('main');
+        updateGameUI();
+        updateQuickStats();
+    } else {
+        // 否则进入创建角色界面
+        switchScreen('creation');
+    }
     
     // 隐藏加载界面
     setTimeout(() => {
@@ -1792,13 +1800,6 @@ function loadGameState() {
                 GameState.chatHistory.forEach(msg => {
                     addChatMessage(msg.sender, msg.content);
                 });
-            }
-            
-            // 如果游戏正在进行中，直接进入主界面
-            if (GameState.isGameActive && GameState.player) {
-                switchScreen('main');
-                updateGameUI();
-                updateQuickStats();
             }
         }
     } catch (error) {
