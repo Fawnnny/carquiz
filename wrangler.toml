@@ -6,6 +6,8 @@ route = ""
 zone_id = ""
 # main 字段指向你的入口文件
 main = "worker.js"
+# 兼容性日期
+compatibility_date = "2026-01-01"
 
 # KV 命名空间绑定
 kv_namespaces = [
@@ -24,5 +26,4 @@ MAX_HONOR = "50"
 [triggers]
 crons = ["0 0 * * *"]
 
-# 兼容性日期
-compatibility_date = "2025-01-01"
+
