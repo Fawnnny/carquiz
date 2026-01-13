@@ -14,7 +14,9 @@ const GameState = {
     lastRaid: null,
     lastChatReset: null,
     questions: {},
-    isGameActive: false
+    isGameActive: false,
+    // 真实玩家数据将从服务器获取
+    realPlayers: []
 };
 
 // 职业加成倍数
@@ -147,22 +149,6 @@ const QUESTIONS = {
         }
     ]
 };
-
-// 模拟玩家数据（用于排行榜）
-const MOCK_PLAYERS = [
-    { id: 1, name: "破晓者", profession: "student", totalAttr: 245, progress: 85, gold: 1200 },
-    { id: 2, name: "钢铁意志", profession: "police", totalAttr: 210, progress: 72, gold: 950 },
-    { id: 3, name: "智慧之光", profession: "lawyer", totalAttr: 275, progress: 90, gold: 1500 },
-    { id: 4, name: "交易大师", profession: "merchant", totalAttr: 195, progress: 68, gold: 2000 },
-    { id: 5, name: "闪耀之星", profession: "star", totalAttr: 185, progress: 45, gold: 800 }
-];
-
-// 模拟荣誉榜数据
-const MOCK_HONOR = [
-    { name: "先行者", date: "2023-10-01", daysUsed: 28 },
-    { name: "工程师", date: "2023-10-05", daysUsed: 30 },
-    { name: "幸运儿", date: "2023-10-10", daysUsed: 25 }
-];
 
 // DOM元素缓存
 const DOM = {
@@ -412,8 +398,10 @@ function setupEventListeners() {
     // 建造
     DOM.startBuildBtn.addEventListener('click', startBuild);
     
-    // 掠夺
+    // 排行榜
     DOM.refreshRank.addEventListener('click', updateRankings);
+    
+    // 掠夺
     DOM.confirmBattle.addEventListener('click', confirmBattleResult);
     
     // 下一天
@@ -1302,10 +1290,25 @@ function getAttributeName(attr) {
 
 // 更新排行榜
 function updateRankings() {
-    // 实时榜
+    // 清空现有列表
     DOM.liveRankList.innerHTML = '';
+    DOM.honorRankList.innerHTML = '';
     
-    // 添加当前玩家（模拟）
+    // 暂时显示提示信息
+    if (!GameState.player) {
+        const livePlaceholder = document.createElement('div');
+        livePlaceholder.className = 'empty-message';
+        livePlaceholder.textContent = '排行榜数据加载中...';
+        DOM.liveRankList.appendChild(livePlaceholder);
+        
+        const honorPlaceholder = document.createElement('div');
+        honorPlaceholder.className = 'empty-message';
+        honorPlaceholder.textContent = '荣誉榜数据加载中...';
+        DOM.honorRankList.appendChild(honorPlaceholder);
+        return;
+    }
+    
+    // 添加当前玩家自己
     const currentPlayer = {
         name: GameState.player.code,
         profession: GameState.player.profession,
@@ -1315,97 +1318,62 @@ function updateRankings() {
         isCurrent: true
     };
     
-    const allPlayers = [currentPlayer, ...MOCK_PLAYERS];
+    // 实时榜 - 暂时只显示当前玩家
+    const rankItem = document.createElement('div');
+    rankItem.className = 'rank-item current-player';
     
-    // 按总属性排序
-    allPlayers.sort((a, b) => b.totalAttr - a.totalAttr);
+    const profName = getProfessionName(currentPlayer.profession);
+    const avatarText = currentPlayer.name.substring(0, 2);
     
-    // 显示前10名
-    allPlayers.slice(0, 10).forEach((player, index) => {
-        const rankItem = document.createElement('div');
-        rankItem.className = `rank-item ${player.isCurrent ? 'current-player' : ''}`;
-        
-        const profName = getProfessionName(player.profession);
-        const avatarText = player.name.substring(0, 2);
-        
-        rankItem.innerHTML = `
-            <div class="rank-pos ${index < 3 ? 'top-3' : ''}">${index + 1}</div>
-            <div class="rank-player">
-                <div class="player-avatar">${avatarText}</div>
-                <div>
-                    <div class="player-name">${player.name}</div>
-                    <div class="player-profession">${profName}</div>
-                </div>
-            </div>
-            <div class="rank-attr">${player.totalAttr}</div>
-            <div class="rank-progress">${player.progress}%</div>
-        `;
-        
-        DOM.liveRankList.appendChild(rankItem);
-    });
-    
-    // 荣誉榜
-    DOM.honorRankList.innerHTML = '';
-    
-    MOCK_HONOR.forEach((honor, index) => {
-        const honorItem = document.createElement('div');
-        honorItem.className = 'honor-item';
-        
-        const avatarText = honor.name.substring(0, 2);
-        
-        honorItem.innerHTML = `
+    rankItem.innerHTML = `
+        <div class="rank-pos">1</div>
+        <div class="rank-player">
             <div class="player-avatar">${avatarText}</div>
-            <div class="honor-info">
-                <div class="honor-name">${honor.name}</div>
-                <div class="honor-details">
-                    <span>逃离日期：${honor.date}</span>
-                    <span> | </span>
-                    <span>使用天数：${honor.daysUsed}天</span>
-                </div>
+            <div>
+                <div class="player-name">${currentPlayer.name}</div>
+                <div class="player-profession">${profName}</div>
             </div>
-        `;
-        
-        DOM.honorRankList.appendChild(honorItem);
-    });
+        </div>
+        <div class="rank-attr">${currentPlayer.totalAttr}</div>
+        <div class="rank-progress">${currentPlayer.progress}%</div>
+    `;
+    
+    DOM.liveRankList.appendChild(rankItem);
+    
+    // 添加其他玩家加载提示
+    if (GameState.realPlayers.length === 0) {
+        const infoItem = document.createElement('div');
+        infoItem.className = 'empty-message';
+        infoItem.innerHTML = '等待其他玩家加入...<br><small>（排行榜数据将从服务器实时获取）</small>';
+        DOM.liveRankList.appendChild(infoItem);
+    }
+    
+    // 荣誉榜 - 暂时显示提示
+    const honorPlaceholder = document.createElement('div');
+    honorPlaceholder.className = 'empty-message';
+    honorPlaceholder.innerHTML = '暂无荣誉记录<br><small>（成功逃离的玩家将出现在这里）</small>';
+    DOM.honorRankList.appendChild(honorPlaceholder);
 }
 
 // 更新掠夺目标
 function updateRaidTargets() {
     DOM.raidTargets.innerHTML = '';
     
-    // 从排行榜玩家中选择（排除自己）
-    MOCK_PLAYERS.forEach(player => {
-        const targetItem = document.createElement('div');
-        targetItem.className = 'target-item';
-        targetItem.dataset.id = player.id;
-        
-        const profName = getProfessionName(player.profession);
-        
-        targetItem.innerHTML = `
-            <div class="target-info">
-                <div class="target-name">${player.name}</div>
-                <div class="target-profession">${profName}</div>
-            </div>
-            <div class="target-stats">
-                <span>总属性：${player.totalAttr}</span>
-                <span>金币：${player.gold}</span>
-            </div>
-            <button class="btn-action raid-btn" data-id="${player.id}">
-                <i class="fas fa-fist-raised"></i> 掠夺
-            </button>
-        `;
-        
-        DOM.raidTargets.appendChild(targetItem);
-    });
+    // 如果没有其他玩家，显示提示
+    if (GameState.realPlayers.length === 0) {
+        const placeholder = document.createElement('div');
+        placeholder.className = 'empty-message';
+        placeholder.innerHTML = '暂时没有可掠夺的目标<br><small>（等待其他玩家加入游戏）</small>';
+        DOM.raidTargets.appendChild(placeholder);
+        return;
+    }
     
-    // 添加掠夺按钮事件
-    document.querySelectorAll('.raid-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const targetId = parseInt(btn.getAttribute('data-id'));
-            startRaid(targetId);
-        });
-    });
+    // 这里将从服务器获取真实玩家列表
+    // 暂时显示提示
+    const placeholder = document.createElement('div');
+    placeholder.className = 'empty-message';
+    placeholder.innerHTML = '掠夺目标加载中...<br><small>（目标将从在线玩家中随机选择）</small>';
+    DOM.raidTargets.appendChild(placeholder);
 }
 
 // 开始掠夺
@@ -1416,85 +1384,24 @@ function startRaid(targetId) {
         return;
     }
     
-    // 找到目标
-    const target = MOCK_PLAYERS.find(p => p.id === targetId);
-    if (!target) return;
+    // 如果没有其他玩家，无法掠夺
+    if (GameState.realPlayers.length === 0) {
+        showNotification('暂时没有可掠夺的目标，等待其他玩家加入');
+        return;
+    }
     
-    // 随机选择比拼属性
-    const attributes = ['intelligence', 'strength', 'communication', 'charm', 'luck'];
-    const randomAttr = attributes[Math.floor(Math.random() * attributes.length)];
-    
-    // 设置掠夺状态
-    currentRaid.target = target;
-    currentRaid.attribute = randomAttr;
-    
-    // 获取属性值（模拟目标属性）
-    const playerAttrValue = GameState.player.attributes[randomAttr];
-    const targetAttrValue = Math.floor(Math.random() * 30) + 20; // 模拟值
-    
-    // 显示战斗界面
-    document.getElementById('targetBattleName').textContent = target.name;
-    document.getElementById('playerBattleAttr').textContent = playerAttrValue;
-    document.getElementById('targetBattleAttr').textContent = targetAttrValue;
-    document.getElementById('battleAttribute').textContent = getAttributeName(randomAttr);
-    
-    // 清空结果
-    DOM.battleResult.innerHTML = '';
-    DOM.battleResult.className = 'battle-result';
-    
-    DOM.raidBattle.style.display = 'flex';
+    // 这里将从服务器获取真实目标信息
+    // 暂时显示提示
+    showNotification('掠夺功能需要连接到服务器，暂时不可用');
 }
 
 // 确认战斗结果
 function confirmBattleResult() {
-    const playerAttrValue = GameState.player.attributes[currentRaid.attribute];
-    const targetAttrValue = parseInt(document.getElementById('targetBattleAttr').textContent);
+    // 这里将从服务器获取真实的战斗结果
+    showNotification('掠夺功能需要连接到服务器，暂时不可用');
     
-    const isWin = playerAttrValue > targetAttrValue;
-    
-    // 计算掠夺结果
-    let resultText = '';
-    if (isWin) {
-        // 掠夺金币的10%
-        const goldToSteal = Math.round(currentRaid.target.gold * 0.1);
-        if (goldToSteal < 1) goldToSteal = 1;
-        
-        GameState.gold += goldToSteal;
-        resultText = `胜利！掠夺了${goldToSteal}金币`;
-        
-        showNotification(`掠夺成功！获得${goldToSteal}金币`);
-    } else {
-        // 失败无惩罚
-        resultText = '失败！没有掠夺到任何东西';
-        showNotification('掠夺失败，没有损失');
-    }
-    
-    // 更新结果显示
-    DOM.battleResult.textContent = resultText;
-    DOM.battleResult.classList.add(isWin ? 'win' : 'lose');
-    
-    // 更新按钮文本
-    DOM.confirmBattle.textContent = '关闭';
-    DOM.confirmBattle.onclick = () => {
-        DOM.raidBattle.style.display = 'none';
-        
-        // 更新掠夺状态
-        GameState.lastRaid = new Date().toLocaleDateString();
-        DOM.raidCount.textContent = 0;
-        DOM.lastRaid.textContent = GameState.lastRaid;
-        
-        // 更新金币显示
-        DOM.goldAmount.textContent = GameState.gold;
-        
-        // 保存游戏
-        saveGame();
-        
-        // 重置确认按钮
-        setTimeout(() => {
-            DOM.confirmBattle.textContent = '确认';
-            DOM.confirmBattle.onclick = confirmBattleResult;
-        }, 100);
-    };
+    // 关闭战斗界面
+    DOM.raidBattle.style.display = 'none';
 }
 
 // 进入下一天
@@ -1581,8 +1488,7 @@ function endGame() {
         // 生成成功结局文本
         generateEndingText(true);
         
-        // 添加到荣誉榜（模拟）
-        // 在实际应用中，这里应该调用API将玩家添加到荣誉榜
+        // 成功逃离的玩家将添加到服务器荣誉榜
         showNotification('恭喜！你已成功逃离锈钴城，名字将被记录在荣誉榜上！');
     } else {
         // 失败结局
@@ -1687,9 +1593,6 @@ function saveGame() {
         
         localStorage.setItem('escapeRustCobaltCity', JSON.stringify(saveData));
         
-        // 如果使用Cloudflare KV，这里可以调用API
-        // await saveToCloudflareKV(saveData);
-        
         console.log('游戏已保存');
     } catch (error) {
         console.error('保存游戏失败:', error);
@@ -1758,6 +1661,7 @@ function restartGame() {
     GameState.chatCount = 0;
     GameState.lastRaid = null;
     GameState.lastChatReset = null;
+    GameState.realPlayers = [];
     GameState.isGameActive = false;
     
     // 重置UI
@@ -1782,30 +1686,6 @@ function restartGame() {
 
 // 页面加载完成后初始化游戏
 document.addEventListener('DOMContentLoaded', initGame);
-
-// 保存游戏到Cloudflare KV（示例函数，需要部署Worker后使用）
-async function saveToCloudflareKV(data) {
-    try {
-        // 这里应该是调用你的Cloudflare Worker的API
-        // 例如: await fetch('https://your-worker.workers.dev/save', {...})
-        console.log('保存到Cloudflare KV（模拟）');
-    } catch (error) {
-        console.error('保存到Cloudflare KV失败:', error);
-    }
-}
-
-// 从Cloudflare KV加载游戏（示例函数）
-async function loadFromCloudflareKV() {
-    try {
-        // 这里应该是调用你的Cloudflare Worker的API
-        // 例如: const response = await fetch('https://your-worker.workers.dev/load')
-        console.log('从Cloudflare KV加载（模拟）');
-        return null;
-    } catch (error) {
-        console.error('从Cloudflare KV加载失败:', error);
-        return null;
-    }
-}
 
 // 导出给HTML使用的全局函数
 window.restartGame = restartGame;
