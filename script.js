@@ -19,6 +19,87 @@ const GameState = {
     realPlayers: []
 };
 
+// 时间工具函数
+const TimeUtils = {
+    // 判断两个时间戳是否在同一天（基于UTC，避免时区问题）
+    isSameUTCday: (timestamp1, timestamp2) => {
+        const date1 = new Date(timestamp1);
+        const date2 = new Date(timestamp2);
+        return date1.getUTCFullYear() === date2.getUTCFullYear() &&
+               date1.getUTCMonth() === date2.getUTCMonth() &&
+               date1.getUTCDate() === date2.getUTCDate();
+    },
+
+    // 获取今天UTC日期的开始时间戳（午夜00:00）
+    getTodayStartUTC: () => {
+        const now = new Date();
+        return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    },
+
+    // 检查并重置每日状态
+    checkAndResetDaily: () => {
+        const lastRaidStr = localStorage.getItem('lastRaidTimestamp');
+        const lastLoginDateStr = localStorage.getItem('lastLoginDate');
+        const todayUTC = TimeUtils.getTodayStartUTC();
+        const todayStr = new Date(todayUTC).toUTCString();
+
+        // 如果从未登录过，或者上次登录不是今天，则重置每日状态
+        if (!lastLoginDateStr || lastLoginDateStr !== todayStr) {
+            localStorage.setItem('lastLoginDate', todayStr);
+            // 只有当上次掠夺也不是今天时，才重置掠夺次数
+            if (lastRaidStr) {
+                const lastRaidDate = new Date(parseInt(lastRaidStr));
+                if (!TimeUtils.isSameUTCday(lastRaidDate, new Date(todayUTC))) {
+                    localStorage.removeItem('lastRaidTimestamp');
+                    console.log('新的一天，掠夺次数已重置！');
+                }
+            }
+        }
+    },
+
+    // 检查是否可以掠夺
+    canRaidToday: () => {
+        const lastRaidStr = localStorage.getItem('lastRaidTimestamp');
+        if (!lastRaidStr) return true; // 从未掠夺过，可以掠夺
+        
+        const lastRaidTime = parseInt(lastRaidStr);
+        const now = Date.now();
+        return !TimeUtils.isSameUTCday(lastRaidTime, now); // 与现在不是同一天就可以掠夺
+    },
+
+    // 记录本次掠夺
+    recordRaid: () => {
+        localStorage.setItem('lastRaidTimestamp', Date.now().toString());
+        GameState.lastRaid = Date.now().toString();
+    },
+
+    // 获取距离下次可掠夺的剩余时间（毫秒）
+    getNextRaidTimeRemaining: () => {
+        const lastRaidStr = localStorage.getItem('lastRaidTimestamp');
+        if (!lastRaidStr) return 0;
+        
+        const lastRaidTime = parseInt(lastRaidStr);
+        const lastRaidDate = new Date(lastRaidTime);
+        // 计算下一天的UTC开始时间
+        const nextDayStart = Date.UTC(
+            lastRaidDate.getUTCFullYear(),
+            lastRaidDate.getUTCMonth(),
+            lastRaidDate.getUTCDate() + 1
+        );
+        return nextDayStart - Date.now();
+    },
+
+    // 格式化的剩余时间显示
+    getFormattedTimeRemaining: () => {
+        const ms = TimeUtils.getNextRaidTimeRemaining();
+        if (ms <= 0) return '现在可以掠夺';
+        
+        const hours = Math.floor(ms / (1000 * 60 * 60));
+        const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+        return `${hours}小时${minutes}分钟后重置`;
+    }
+};
+
 // 职业加成倍数
 const PROFESSION_BONUS = {
     student: { luck: 2 },
@@ -303,6 +384,9 @@ function initGame() {
     setupEventListeners();
     updateAttributeControls();
     checkDailyReset();
+    
+    // 添加每日状态检查
+    TimeUtils.checkAndResetDaily();
     
     // 显示创建角色界面
     switchScreen('creation');
@@ -605,6 +689,7 @@ function switchSection(section) {
         updateRankings();
     } else if (section === 'raid') {
         updateRaidTargets();
+        updateRaidUI();
     }
 }
 
@@ -660,9 +745,12 @@ function updateGameUI() {
     // 聊天次数
     DOM.chatCount.textContent = 5 - GameState.chatCount;
     
-    // 掠夺次数
-    DOM.raidCount.textContent = GameState.lastRaid ? 0 : 1;
-    DOM.lastRaid.textContent = GameState.lastRaid || '无';
+    // 掠夺次数 - 使用新的时间戳系统
+    const canRaid = TimeUtils.canRaidToday();
+    DOM.raidCount.textContent = canRaid ? 1 : 0;
+    
+    // 更新掠夺状态显示
+    updateRaidUI();
     
     // 更新工作解锁状态
     updateJobUnlocks();
@@ -672,6 +760,45 @@ function updateGameUI() {
     
     // 更新车辆部件
     updateVehicleParts();
+}
+
+// 更新掠夺界面状态
+function updateRaidUI() {
+    const canRaid = TimeUtils.canRaidToday();
+    const raidBtn = document.getElementById('raidActionBtn');
+    const raidStatusEl = document.getElementById('raidStatusDisplay');
+    
+    if (raidBtn) {
+        raidBtn.disabled = !canRaid;
+        raidBtn.title = canRaid ? '掠夺其他玩家' : TimeUtils.getFormattedTimeRemaining();
+    }
+    
+    if (raidStatusEl) {
+        if (canRaid) {
+            raidStatusEl.textContent = '今日可掠夺：1次';
+            raidStatusEl.style.color = 'var(--success-color)';
+        } else {
+            raidStatusEl.textContent = `已掠夺，${TimeUtils.getFormattedTimeRemaining()}`;
+            raidStatusEl.style.color = 'var(--text-secondary)';
+        }
+    }
+    
+    // 更新游戏主界面的资源显示
+    if (DOM.raidCount) {
+        DOM.raidCount.textContent = canRaid ? '1' : '0';
+    }
+    
+    // 更新最后掠夺时间显示
+    if (DOM.lastRaid) {
+        const lastRaidStr = localStorage.getItem('lastRaidTimestamp');
+        if (lastRaidStr) {
+            const lastRaidTime = parseInt(lastRaidStr);
+            const date = new Date(lastRaidTime);
+            DOM.lastRaid.textContent = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+        } else {
+            DOM.lastRaid.textContent = '无';
+        }
+    }
 }
 
 // 更新快速属性显示
@@ -1378,9 +1505,15 @@ function updateRaidTargets() {
 
 // 开始掠夺
 function startRaid(targetId) {
-    // 检查掠夺次数
-    if (GameState.lastRaid) {
-        showNotification('今天已经进行过掠夺了');
+    // 1. 首先检查今日是否已掠夺
+    if (!TimeUtils.canRaidToday()) {
+        showNotification(`今天已经掠夺过了！${TimeUtils.getFormattedTimeRemaining()}`);
+        return;
+    }
+    
+    // 2. 检查行动点
+    if (GameState.actionPoints < 1) {
+        showNotification('行动点不足！');
         return;
     }
     
@@ -1391,17 +1524,59 @@ function startRaid(targetId) {
     }
     
     // 这里将从服务器获取真实目标信息
-    // 暂时显示提示
-    showNotification('掠夺功能需要连接到服务器，暂时不可用');
+    // 暂时模拟一个掠夺战斗
+    showNotification('掠夺功能需要连接到服务器，暂时模拟战斗结果');
+    
+    // 消耗行动点
+    GameState.actionPoints--;
+    DOM.actionPoints.textContent = `${GameState.actionPoints}/5`;
+    
+    // 记录掠夺
+    TimeUtils.recordRaid();
+    
+    // 模拟战斗结果（50%成功）
+    const isSuccess = Math.random() > 0.5;
+    
+    if (isSuccess) {
+        // 成功：获得金币
+        const goldStolen = Math.floor(Math.random() * 50) + 20;
+        GameState.gold += goldStolen;
+        DOM.goldAmount.textContent = GameState.gold;
+        showNotification(`掠夺成功！获得${goldStolen}金币`);
+        
+        // 记录行动
+        GameState.dailyActions.push(`掠夺成功，获得${goldStolen}金币`);
+    } else {
+        // 失败：损失金币
+        const goldLost = Math.floor(Math.random() * 30) + 10;
+        GameState.gold = Math.max(0, GameState.gold - goldLost);
+        DOM.goldAmount.textContent = GameState.gold;
+        showNotification(`掠夺失败！损失${goldLost}金币`);
+        
+        // 记录行动
+        GameState.dailyActions.push(`掠夺失败，损失${goldLost}金币`);
+    }
+    
+    // 更新掠夺UI
+    updateRaidUI();
+    
+    // 保存游戏
+    saveGame();
 }
 
 // 确认战斗结果
 function confirmBattleResult() {
     // 这里将从服务器获取真实的战斗结果
-    showNotification('掠夺功能需要连接到服务器，暂时不可用');
+    showNotification('掠夺功能需要连接到服务器，暂时模拟战斗结果');
+    
+    // 记录掠夺
+    TimeUtils.recordRaid();
     
     // 关闭战斗界面
     DOM.raidBattle.style.display = 'none';
+    
+    // 更新掠夺UI
+    updateRaidUI();
 }
 
 // 进入下一天
@@ -1420,11 +1595,7 @@ function nextDay() {
     // 重置每日聊天次数
     GameState.chatCount = 0;
     
-    // 重置掠夺状态
-    const today = new Date().toLocaleDateString();
-    if (GameState.lastRaid !== today) {
-        GameState.lastRaid = null;
-    }
+    // 重置掠夺状态 - 现在由时间戳系统自动处理，无需手动重置
     
     // 清空当日行动记录
     const dayLog = DOM.dayLog;
@@ -1559,10 +1730,7 @@ function checkDailyReset() {
         GameState.lastChatReset = today;
     }
     
-    // 检查掠夺重置
-    if (GameState.lastRaid && GameState.lastRaid !== today) {
-        GameState.lastRaid = null;
-    }
+    // 注意：掠夺重置现在由TimeUtils.checkAndResetDaily()处理
 }
 
 // 显示通知
@@ -1649,6 +1817,8 @@ function confirmRestart() {
 function restartGame() {
     // 清除游戏数据
     localStorage.removeItem('escapeRustCobaltCity');
+    localStorage.removeItem('lastRaidTimestamp');
+    localStorage.removeItem('lastLoginDate');
     
     // 重置游戏状态
     GameState.player = null;
@@ -1691,3 +1861,4 @@ document.addEventListener('DOMContentLoaded', initGame);
 window.restartGame = restartGame;
 window.saveGame = saveGame;
 window.loadGame = loadGameState;
+window.startRaid = startRaid;
