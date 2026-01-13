@@ -1,6 +1,6 @@
-name = "escape-rust-cobalt-city-worker"
+name = "escape"
 type = "javascript"
-account_id = "your-account-id"
+account_id = "14c64b780e17a5ec80b08c205e448237"
 workers_dev = true
 route = ""
 zone_id = ""
@@ -23,4 +23,6 @@ MAX_HONOR = "50"
 crons = ["0 0 * * *"]
 
 # 兼容性日期
-compatibility_date = "2024-01-01"
+compatibility_date = "2025-01-01"
+# main 字段指向你的入口文件
+main = "worker.js"
