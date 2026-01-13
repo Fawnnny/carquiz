@@ -11,9 +11,9 @@ compatibility_date = "2026-01-01"
 
 # KV 命名空间绑定
 kv_namespaces = [
-  { binding = "PLAYERS", id = "your-players-kv-id", preview_id = "your-players-kv-preview-id" },
-  { binding = "RANKINGS", id = "your-rankings-kv-id", preview_id = "your-rankings-kv-preview-id" },
-  { binding = "HONOR", id = "your-honor-kv-id", preview_id = "your-honor-kv-preview-id" }
+  { binding = "PLAYERS", id = "7d57e6785ece4de6962159fee6ff79ff", preview_id = "7d57e6785ece4de6962159fee6ff79ff" },
+  { binding = "RANKINGS", id = "0ed63c5be62b4dd1950cccaab9fc0b41", preview_id = "0ed63c5be62b4dd1950cccaab9fc0b41" },
+  { binding = "HONOR", id = "dcec6b4ebb134568822b96ba91d3c375", preview_id = "dcec6b4ebb134568822b96ba91d3c375" }
 ]
 
 # 环境变量（可选）
