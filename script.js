@@ -15,7 +15,7 @@ const GameState = {
     lastChatReset: null,
     questions: {},
     isGameActive: false,
-    // 真实玩家数据将从服务器获取
+    playerId: null,
     realPlayers: []
 };
 
@@ -378,6 +378,27 @@ let currentRaid = {
     attribute: null
 };
 
+// 生成玩家ID
+function generatePlayerId() {
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(2, 10);
+    return `player_${timestamp}_${random}`;
+}
+
+// 获取玩家ID
+function getPlayerId() {
+    if (GameState.playerId) return GameState.playerId;
+    
+    let playerId = localStorage.getItem('playerId');
+    if (!playerId) {
+        playerId = generatePlayerId();
+        localStorage.setItem('playerId', playerId);
+        GameState.playerId = playerId;
+    }
+    
+    return playerId;
+}
+
 // 初始化游戏
 function initGame() {
     loadGameState();
@@ -394,6 +415,9 @@ function initGame() {
         switchScreen('main');
         updateGameUI();
         updateQuickStats();
+        
+        // 从KV加载最新数据
+        loadFromKV();
     } else {
         // 否则进入创建角色界面
         switchScreen('creation');
@@ -403,6 +427,45 @@ function initGame() {
     setTimeout(() => {
         DOM.loadingOverlay.style.display = 'none';
     }, 500);
+}
+
+// 从KV加载游戏数据
+async function loadFromKV() {
+    if (!window.escapeRustCobaltCityAPI || !window.escapeRustCobaltCityAPI.kvService) {
+        console.log('KV服务未初始化');
+        return;
+    }
+    
+    try {
+        const playerId = getPlayerId();
+        const kvData = await window.escapeRustCobaltCityAPI.kvService.loadPlayerData(playerId);
+        
+        if (kvData) {
+            console.log('从KV加载数据成功:', kvData);
+            
+            // 更新游戏状态
+            if (kvData.currentDay) GameState.currentDay = kvData.currentDay;
+            if (kvData.gold !== undefined) GameState.gold = kvData.gold;
+            if (kvData.buildProgress !== undefined) GameState.buildProgress = kvData.buildProgress;
+            if (kvData.actionPoints !== undefined) GameState.actionPoints = kvData.actionPoints;
+            if (kvData.chatCount !== undefined) GameState.chatCount = kvData.chatCount;
+            if (kvData.chatHistory) GameState.chatHistory = kvData.chatHistory;
+            
+            // 更新UI
+            updateGameUI();
+            updateQuickStats();
+            
+            // 恢复聊天记录
+            if (GameState.chatHistory.length > 0) {
+                DOM.chatMessages.innerHTML = '';
+                GameState.chatHistory.forEach(msg => {
+                    addChatMessage(msg.sender, msg.content);
+                });
+            }
+        }
+    } catch (error) {
+        console.error('从KV加载数据失败:', error);
+    }
 }
 
 // 切换屏幕
@@ -617,6 +680,10 @@ function startGame() {
     
     GameState.player = player;
     GameState.isGameActive = true;
+    
+    // 生成玩家ID
+    GameState.playerId = generatePlayerId();
+    localStorage.setItem('playerId', GameState.playerId);
     
     // 保存初始状态
     saveGame();
@@ -890,6 +957,9 @@ function sendChatMessage() {
         // 更新UI
         DOM.chatCount.textContent = 5 - GameState.chatCount;
     }, 500);
+    
+    // 保存游戏
+    saveGame();
 }
 
 // 添加聊天消息
@@ -1424,87 +1494,112 @@ function getAttributeName(attr) {
 }
 
 // 更新排行榜
-function updateRankings() {
+async function updateRankings() {
     // 清空现有列表
     DOM.liveRankList.innerHTML = '';
     DOM.honorRankList.innerHTML = '';
     
-    // 暂时显示提示信息
-    if (!GameState.player) {
-        const livePlaceholder = document.createElement('div');
-        livePlaceholder.className = 'empty-message';
-        livePlaceholder.textContent = '排行榜数据加载中...';
-        DOM.liveRankList.appendChild(livePlaceholder);
-        
-        const honorPlaceholder = document.createElement('div');
-        honorPlaceholder.className = 'empty-message';
-        honorPlaceholder.textContent = '荣誉榜数据加载中...';
-        DOM.honorRankList.appendChild(honorPlaceholder);
-        return;
+    // 从KV获取实时排行榜
+    try {
+        if (window.escapeRustCobaltCityAPI && window.escapeRustCobaltCityAPI.kvService) {
+            const rankings = await window.escapeRustCobaltCityAPI.kvService.getRankings(10);
+            
+            if (rankings && rankings.length > 0) {
+                // 显示服务器返回的排行榜
+                rankings.forEach((player, index) => {
+                    const rankItem = document.createElement('div');
+                    rankItem.className = 'rank-item';
+                    
+                    // 检查是否是当前玩家
+                    const currentPlayerId = getPlayerId();
+                    if (player.playerId === currentPlayerId) {
+                        rankItem.classList.add('current-player');
+                    }
+                    
+                    const profName = getProfessionName(player.profession);
+                    const avatarText = (player.playerCode || player.name || '玩家').substring(0, 2);
+                    
+                    rankItem.innerHTML = `
+                        <div class="rank-pos">${index + 1}</div>
+                        <div class="rank-player">
+                            <div class="player-avatar">${avatarText}</div>
+                            <div>
+                                <div class="player-name">${player.playerCode || player.name}</div>
+                                <div class="player-profession">${profName}</div>
+                            </div>
+                        </div>
+                        <div class="rank-attr">${player.totalAttributes || 0}</div>
+                        <div class="rank-progress">${player.buildProgress || 0}%</div>
+                    `;
+                    
+                    DOM.liveRankList.appendChild(rankItem);
+                });
+            } else {
+                // 没有数据时显示提示
+                showEmptyRankingsMessage();
+            }
+            
+            // 获取荣誉榜
+            const honorList = await window.escapeRustCobaltCityAPI.kvService.getHonorRankings(10);
+            if (honorList && honorList.length > 0) {
+                // 显示荣誉榜
+                honorList.forEach((honor, index) => {
+                    const honorItem = document.createElement('div');
+                    honorItem.className = 'honor-item';
+                    
+                    const avatarText = (honor.playerCode || honor.name || '英雄').substring(0, 2);
+                    const profName = getProfessionName(honor.profession);
+                    
+                    honorItem.innerHTML = `
+                        <div class="player-avatar">${avatarText}</div>
+                        <div class="honor-info">
+                            <div class="honor-name">${honor.playerCode || honor.name}</div>
+                            <div class="honor-details">
+                                <span class="profession">${profName}</span>
+                                <span class="date">${new Date(honor.escapeDate || honor.date).toLocaleDateString()}</span>
+                                <span class="days">用时: ${honor.daysUsed}天</span>
+                            </div>
+                        </div>
+                    `;
+                    
+                    DOM.honorRankList.appendChild(honorItem);
+                });
+            } else {
+                // 没有荣誉榜数据时显示提示
+                showEmptyHonorMessage();
+            }
+        } else {
+            showEmptyRankingsMessage();
+        }
+    } catch (error) {
+        console.error('获取排行榜失败:', error);
+        showEmptyRankingsMessage();
     }
-    
-    // 添加当前玩家自己
-    const currentPlayer = {
-        name: GameState.player.code,
-        profession: GameState.player.profession,
-        totalAttr: Object.values(GameState.player.attributes).reduce((a, b) => a + b, 0),
-        progress: GameState.buildProgress,
-        gold: GameState.gold,
-        isCurrent: true
-    };
-    
-    // 实时榜 - 暂时只显示当前玩家
-    const rankItem = document.createElement('div');
-    rankItem.className = 'rank-item current-player';
-    
-    const profName = getProfessionName(currentPlayer.profession);
-    const avatarText = currentPlayer.name.substring(0, 2);
-    
-    rankItem.innerHTML = `
-        <div class="rank-pos">1</div>
-        <div class="rank-player">
-            <div class="player-avatar">${avatarText}</div>
-            <div>
-                <div class="player-name">${currentPlayer.name}</div>
-                <div class="player-profession">${profName}</div>
-            </div>
-        </div>
-        <div class="rank-attr">${currentPlayer.totalAttr}</div>
-        <div class="rank-progress">${currentPlayer.progress}%</div>
-    `;
-    
-    DOM.liveRankList.appendChild(rankItem);
-    
-    // 添加其他玩家加载提示
-    if (GameState.realPlayers.length === 0) {
-        const infoItem = document.createElement('div');
-        infoItem.className = 'empty-message';
-        infoItem.innerHTML = '等待其他玩家加入...<br><small>（排行榜数据将从服务器实时获取）</small>';
-        DOM.liveRankList.appendChild(infoItem);
-    }
-    
-    // 荣誉榜 - 暂时显示提示
-    const honorPlaceholder = document.createElement('div');
-    honorPlaceholder.className = 'empty-message';
-    honorPlaceholder.innerHTML = '暂无荣誉记录<br><small>（成功逃离的玩家将出现在这里）</small>';
-    DOM.honorRankList.appendChild(honorPlaceholder);
+}
+
+function showEmptyRankingsMessage() {
+    const placeholder = document.createElement('div');
+    placeholder.className = 'empty-message';
+    placeholder.innerHTML = '排行榜数据加载中...<br><small>（首次加载可能需要一些时间）</small>';
+    DOM.liveRankList.appendChild(placeholder);
+}
+
+function showEmptyHonorMessage() {
+    const placeholder = document.createElement('div');
+    placeholder.className = 'empty-message';
+    placeholder.innerHTML = '暂无荣誉记录<br><small>（成功逃离的玩家将出现在这里）</small>';
+    DOM.honorRankList.appendChild(placeholder);
 }
 
 // 更新掠夺目标
 function updateRaidTargets() {
     DOM.raidTargets.innerHTML = '';
     
-    // 如果没有其他玩家，显示提示
-    if (GameState.realPlayers.length === 0) {
-        const placeholder = document.createElement('div');
-        placeholder.className = 'empty-message';
-        placeholder.innerHTML = '暂时没有可掠夺的目标<br><small>（等待其他玩家加入游戏）</small>';
-        DOM.raidTargets.appendChild(placeholder);
-        return;
-    }
-    
-    // 这里将从服务器获取真实玩家列表
-    // 暂时显示提示
+    // 尝试从KV获取其他玩家作为掠夺目标
+    showEmptyRaidTargetsMessage();
+}
+
+function showEmptyRaidTargetsMessage() {
     const placeholder = document.createElement('div');
     placeholder.className = 'empty-message';
     placeholder.innerHTML = '掠夺目标加载中...<br><small>（目标将从在线玩家中随机选择）</small>';
@@ -1525,15 +1620,8 @@ function startRaid(targetId) {
         return;
     }
     
-    // 如果没有其他玩家，无法掠夺
-    if (GameState.realPlayers.length === 0) {
-        showNotification('暂时没有可掠夺的目标，等待其他玩家加入');
-        return;
-    }
-    
-    // 这里将从服务器获取真实目标信息
     // 暂时模拟一个掠夺战斗
-    showNotification('掠夺功能需要连接到服务器，暂时模拟战斗结果');
+    showNotification('正在寻找掠夺目标...');
     
     // 消耗行动点
     GameState.actionPoints--;
@@ -1603,8 +1691,6 @@ function nextDay() {
     // 重置每日聊天次数
     GameState.chatCount = 0;
     
-    // 重置掠夺状态 - 现在由时间戳系统自动处理，无需手动重置
-    
     // 清空当日行动记录
     const dayLog = DOM.dayLog;
     dayLog.innerHTML = '';
@@ -1664,10 +1750,12 @@ function endGame() {
         DOM.endingTitle.textContent = '成功逃离！';
         DOM.endingSubtitle.textContent = '恭喜你建造出新能源汽车，成功逃离锈钴城！';
         
+        // 提交到荣誉榜
+        submitToHonor(totalAttributes);
+        
         // 生成成功结局文本
         generateEndingText(true);
         
-        // 成功逃离的玩家将添加到服务器荣誉榜
         showNotification('恭喜！你已成功逃离锈钴城，名字将被记录在荣誉榜上！');
     } else {
         // 失败结局
@@ -1691,41 +1779,89 @@ function endGame() {
     saveGame();
 }
 
+// 提交到荣誉榜
+async function submitToHonor(totalAttributes) {
+    if (!window.escapeRustCobaltCityAPI || !window.escapeRustCobaltCityAPI.kvService) {
+        console.log('KV服务未初始化，无法提交到荣誉榜');
+        return;
+    }
+    
+    try {
+        const playerId = getPlayerId();
+        const saveData = {
+            player: GameState.player,
+            currentDay: GameState.currentDay,
+            gold: GameState.gold,
+            buildProgress: GameState.buildProgress,
+            totalAttributes: totalAttributes,
+            isGameActive: false
+        };
+        
+        const result = await window.escapeRustCobaltCityAPI.kvService.submitToHonor(playerId, saveData);
+        console.log('荣誉榜提交结果:', result);
+    } catch (error) {
+        console.error('提交到荣誉榜失败:', error);
+    }
+}
+
 // 生成结局文本
 async function generateEndingText(isSuccess) {
     DOM.endingLoading.style.display = 'flex';
     DOM.endingText.style.display = 'none';
     
-    // 模拟AI生成延迟
-    setTimeout(() => {
-        const player = GameState.player;
-        
-        let endingText = '';
-        
-        if (isSuccess) {
-            const successes = [
-                `经过${GameState.currentDay - 1}天的努力，代号"${player.code}"的你终于完成了新能源汽车的建造。`,
-                `在最后期限到来之前，你驾驶着自己建造的车辆冲破了锈钴城的封锁线。`,
-                `身后是逐渐远去的废弃城市，前方是自由的曙光。你成功了！`,
-                `你的名字将被记录在锈钴城的逃离者名单中，成为后来者的榜样。`
-            ];
+    // 使用AI服务生成结局（如果可用）
+    if (window.escapeRustCobaltCityAPI && window.escapeRustCobaltCityAPI.aiService) {
+        try {
+            const gameStats = {
+                buildProgress: GameState.buildProgress,
+                gold: GameState.gold,
+                totalAttributes: Object.values(GameState.player.attributes).reduce((a, b) => a + b, 0),
+                daysUsed: GameState.currentDay - 1,
+                profession: GameState.player.profession
+            };
             
-            endingText = successes.join(' ');
-        } else {
-            const failures = [
-                `30天的期限已到，代号"${player.code}"的你还未能完成新能源汽车的建造。`,
-                `看着${GameState.buildProgress}%的完成进度，你意识到自己将永远困在这座城市。`,
-                `资源已经耗尽，希望已经破灭。锈钴城成为了你永久的牢笼。`,
-                `也许，会有后来者完成你未竟的事业，但对你来说，一切都已经结束了。`
-            ];
-            
-            endingText = failures.join(' ');
+            const ending = await window.escapeRustCobaltCityAPI.aiService.generateEnding(gameStats);
+            DOM.endingText.innerHTML = `
+                <p><strong>结局描述：</strong></p>
+                <p>${ending.endingDesc || ''}</p>
+                <p><strong>后日谈：</strong></p>
+                <p>${ending.epilogue || ''}</p>
+            `;
+        } catch (error) {
+            console.error('AI生成结局失败，使用模拟结局:', error);
+            generateSimulatedEnding(isSuccess);
         }
-        
-        DOM.endingText.innerHTML = `<p>${endingText}</p>`;
-        DOM.endingLoading.style.display = 'none';
-        DOM.endingText.style.display = 'block';
-    }, 1500);
+    } else {
+        generateSimulatedEnding(isSuccess);
+    }
+    
+    DOM.endingLoading.style.display = 'none';
+    DOM.endingText.style.display = 'block';
+}
+
+// 生成模拟结局
+function generateSimulatedEnding(isSuccess) {
+    const player = GameState.player;
+    
+    let endingText = '';
+    
+    if (isSuccess) {
+        endingText = `
+            <p><strong>结局描述：</strong></p>
+            <p>经过${GameState.currentDay - 1}天的努力，代号"${player.code}"的你终于完成了新能源汽车的建造。在最后期限到来之前，你驾驶着自己建造的车辆冲破了锈钴城的封锁线。身后是逐渐远去的废弃城市，前方是自由的曙光。你成功了！</p>
+            <p><strong>后日谈：</strong></p>
+            <p>你的名字将被记录在锈钴城的逃离者名单中，成为后来者的榜样。在新的定居点，你继续研究新能源汽车技术，为重建文明贡献着自己的力量。</p>
+        `;
+    } else {
+        endingText = `
+            <p><strong>结局描述：</strong></p>
+            <p>30天的期限已到，代号"${player.code}"的你还未能完成新能源汽车的建造。看着${GameState.buildProgress}%的完成进度，你意识到自己将永远困在这座城市。资源已经耗尽，希望已经破灭。锈钴城成为了你永久的牢笼。</p>
+            <p><strong>后日谈：</strong></p>
+            <p>多年以后，当新的探险队进入锈钴城废墟时，他们发现了你的日记和未完成的新能源汽车。你的故事成为警示后来者的案例，提醒他们时间管理和资源规划的重要性。</p>
+        `;
+    }
+    
+    DOM.endingText.innerHTML = endingText;
 }
 
 // 检查每日重置
@@ -1737,8 +1873,6 @@ function checkDailyReset() {
         GameState.chatCount = 0;
         GameState.lastChatReset = today;
     }
-    
-    // 注意：掠夺重置现在由TimeUtils.checkAndResetDaily()处理
 }
 
 // 显示通知
@@ -1752,7 +1886,7 @@ function showNotification(message, duration = 3000) {
 }
 
 // 保存游戏
-function saveGame() {
+async function saveGame() {
     try {
         const saveData = {
             player: GameState.player,
@@ -1763,11 +1897,23 @@ function saveGame() {
             chatCount: GameState.chatCount,
             lastChatReset: GameState.lastChatReset,
             lastRaid: GameState.lastRaid,
-            chatHistory: GameState.chatHistory.slice(-50), // 只保存最近50条
+            chatHistory: GameState.chatHistory.slice(-50),
             isGameActive: GameState.isGameActive
         };
         
+        // 1. 保存到本地存储
         localStorage.setItem('escapeRustCobaltCity', JSON.stringify(saveData));
+        
+        // 2. 保存到Cloudflare KV（如果API可用）
+        if (window.escapeRustCobaltCityAPI && window.escapeRustCobaltCityAPI.kvService) {
+            const playerId = getPlayerId();
+            
+            if (playerId) {
+                // 异步保存到KV
+                const result = await window.escapeRustCobaltCityAPI.kvService.savePlayerData(playerId, saveData);
+                console.log('KV保存结果:', result);
+            }
+        }
         
         console.log('游戏已保存');
     } catch (error) {
@@ -1793,6 +1939,9 @@ function loadGameState() {
             GameState.lastRaid = data.lastRaid;
             GameState.chatHistory = data.chatHistory || [];
             GameState.isGameActive = data.isGameActive || false;
+            
+            // 获取玩家ID
+            GameState.playerId = localStorage.getItem('playerId');
             
             // 恢复聊天记录
             if (GameState.chatHistory.length > 0) {
@@ -1834,6 +1983,7 @@ function restartGame() {
     GameState.lastChatReset = null;
     GameState.realPlayers = [];
     GameState.isGameActive = false;
+    GameState.playerId = null;
     
     // 重置UI
     DOM.playerCode.value = '';

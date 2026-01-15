@@ -1,16 +1,16 @@
 // 逃离锈钴城 - API 接口层
 
-// API配置
+// 修改API配置部分
 const API_CONFIG = {
     // AI API 配置（根据实际情况修改）
-    AI_API_URL: 'https://api.example-ai-service.com/v1/chat/completions', // 替换为实际的AI API URL
-    AI_API_KEY: 'sk-example-api-key-1234567890abcdef', // 替换为实际的API密钥
+    AI_API_URL: 'https://api.example-ai-service.com/v1/chat/completions',
+    AI_API_KEY: 'sk-example-api-key-1234567890abcdef',
     
-    // Cloudflare Worker URL（根据实际情况修改）
-    CF_WORKER_URL: 'https://carquiz-a35.pages.dev/', // 确保这个URL指向你的Worker
+    // Cloudflare Pages Functions API URL
+    CF_PAGES_API_URL: 'https://carquiz-a35.pages.dev/api', // 注意添加了 /api
     
-    // 本地模拟模式（当没有真实API时使用）
-    SIMULATION_MODE: false, // 设置为false以使用真实的KV存储
+    // 本地模拟模式
+    SIMULATION_MODE: false, // 设为false以使用Pages Functions API
     
     // 请求超时时间（毫秒）
     TIMEOUT: 10000
@@ -339,27 +339,25 @@ class KVService {
         }
 
         try {
-            console.log('尝试保存到Cloudflare KV, URL:', `${API_CONFIG.CF_WORKER_URL}/save`);
+            console.log('尝试保存到Cloudflare Pages Functions, URL:', `${API_CONFIG.CF_PAGES_API_URL}/save`);
             
-            const response = await fetch(`${API_CONFIG.CF_WORKER_URL}/save`, {
+            const response = await fetch(`${API_CONFIG.CF_PAGES_API_URL}/save`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    key: `${this.playerPrefix}${playerId}`,
-                    value: data
+                    playerId: playerId, // 注意：API期望playerId字段
+                    playerData: data     // 注意：API期望playerData字段
                 })
             });
 
             const result = await response.json();
-            console.log('Cloudflare KV保存响应:', result);
+            console.log('Pages Functions API保存响应:', result);
             
             return result;
         } catch (error) {
-            console.error('保存到Cloudflare KV失败:', error);
-            // 降级到本地存储
-            console.log('降级到本地存储');
+            console.error('保存到Pages Functions API失败:', error);
             return this.saveToLocalStorage(playerId, data);
         }
     }
@@ -374,21 +372,23 @@ class KVService {
         }
 
         try {
-            const url = `${API_CONFIG.CF_WORKER_URL}/load?key=${this.playerPrefix}${playerId}`;
-            console.log('尝试从Cloudflare KV加载, URL:', url);
+            const url = `${API_CONFIG.CF_PAGES_API_URL}/load?playerId=${playerId}`; // 使用playerId参数
+            console.log('尝试从Cloudflare Pages Functions加载, URL:', url);
             
             const response = await fetch(url);
             
             if (response.ok) {
                 const data = await response.json();
-                console.log('Cloudflare KV加载响应:', data);
-                return data.value;
+                console.log('Pages Functions API加载响应:', data);
+                return data.playerData; // 注意：API返回的是{success: true, playerData: ...}
             } else {
-                console.log('Cloudflare KV加载失败，状态码:', response.status);
+                console.log('Pages Functions API加载失败，状态码:', response.status);
+                const errorText = await response.text();
+                console.log('错误响应:', errorText);
                 return this.loadFromLocalStorage(playerId);
             }
         } catch (error) {
-            console.error('从Cloudflare KV加载失败:', error);
+            console.error('从Cloudflare Pages Functions加载失败:', error);
             return this.loadFromLocalStorage(playerId);
         }
     }
@@ -403,17 +403,17 @@ class KVService {
         }
 
         try {
-            const url = `${API_CONFIG.CF_WORKER_URL}/rankings?limit=${limit}`;
-            console.log('尝试从Cloudflare KV获取排行榜, URL:', url);
+            const url = `${API_CONFIG.CF_PAGES_API_URL}/rankings?limit=${limit}`;
+            console.log('尝试从Cloudflare Pages Functions获取排行榜, URL:', url);
             
             const response = await fetch(url);
             
             if (response.ok) {
                 const data = await response.json();
-                console.log('Cloudflare KV排行榜响应:', data);
-                return data;
+                console.log('Pages Functions API排行榜响应:', data);
+                return data.rankings || []; // 返回排行榜数组
             } else {
-                console.log('Cloudflare KV排行榜加载失败，状态码:', response.status);
+                console.log('Pages Functions API排行榜加载失败，状态码:', response.status);
                 return this.getSimulatedRankings(limit);
             }
         } catch (error) {
@@ -432,17 +432,17 @@ class KVService {
         }
 
         try {
-            const url = `${API_CONFIG.CF_WORKER_URL}/honor?limit=${limit}`;
-            console.log('尝试从Cloudflare KV获取荣誉榜, URL:', url);
+            const url = `${API_CONFIG.CF_PAGES_API_URL}/honor?limit=${limit}`;
+            console.log('尝试从Cloudflare Pages Functions获取荣誉榜, URL:', url);
             
             const response = await fetch(url);
             
             if (response.ok) {
                 const data = await response.json();
-                console.log('Cloudflare KV荣誉榜响应:', data);
-                return data;
+                console.log('Pages Functions API荣誉榜响应:', data);
+                return data.honorList || []; // 返回荣誉榜数组
             } else {
-                console.log('Cloudflare KV荣誉榜加载失败，状态码:', response.status);
+                console.log('Pages Functions API荣誉榜加载失败，状态码:', response.status);
                 return this.getSimulatedHonorRankings(limit);
             }
         } catch (error) {
@@ -452,8 +452,8 @@ class KVService {
     }
 
     // 提交到荣誉榜
-    async submitToHonor(playerData) {
-        console.log('提交到荣誉榜:', playerData);
+    async submitToHonor(playerId, playerData) {
+        console.log('提交到荣誉榜:', playerId, playerData);
         
         if (API_CONFIG.SIMULATION_MODE) {
             console.log('使用模拟模式，模拟提交');
@@ -461,19 +461,22 @@ class KVService {
         }
 
         try {
-            const url = `${API_CONFIG.CF_WORKER_URL}/honor/submit`;
-            console.log('尝试提交到Cloudflare KV荣誉榜, URL:', url);
+            const url = `${API_CONFIG.CF_PAGES_API_URL}/honor/submit`;
+            console.log('尝试提交到Cloudflare Pages Functions荣誉榜, URL:', url);
             
             const response = await fetch(url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify(playerData)
+                body: JSON.stringify({
+                    playerId: playerId,   // 传递playerId
+                    playerData: playerData // 传递playerData
+                })
             });
 
             const result = await response.json();
-            console.log('Cloudflare KV荣誉提交响应:', result);
+            console.log('Pages Functions API荣誉提交响应:', result);
             
             return result;
         } catch (error) {
@@ -795,5 +798,4 @@ window.escapeRustCobaltCityAPI = {
 // 输出加载信息
 console.log('逃离锈钴城API已加载');
 console.log('模拟模式:', API_CONFIG.SIMULATION_MODE);
-
 console.log('Cloudflare Worker URL:', API_CONFIG.CF_WORKER_URL);
