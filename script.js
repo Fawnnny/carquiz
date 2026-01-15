@@ -400,7 +400,7 @@ function getPlayerId() {
 }
 
 // 初始化游戏
-function initGame() {
+async function initGame() {
     loadGameState();
     setupEventListeners();
     updateAttributeControls();
@@ -416,17 +416,20 @@ function initGame() {
         updateGameUI();
         updateQuickStats();
         
-        // 从KV加载最新数据
-        loadFromKV();
+        // 从KV加载最新数据 - 使用try-catch防止崩溃
+        try {
+            await loadFromKV();
+        } catch (error) {
+            console.warn('从KV加载数据失败，使用本地数据:', error);
+            // 继续使用本地数据
+        }
     } else {
         // 否则进入创建角色界面
         switchScreen('creation');
     }
     
     // 隐藏加载界面
-    setTimeout(() => {
-        DOM.loadingOverlay.style.display = 'none';
-    }, 500);
+    DOM.loadingOverlay.style.display = 'none';
 }
 
 // 从KV加载游戏数据
@@ -2063,7 +2066,14 @@ function restartGame() {
 }
 
 // 页面加载完成后初始化游戏
-document.addEventListener('DOMContentLoaded', initGame);
+document.addEventListener('DOMContentLoaded', () => {
+    // 立即开始初始化
+    initGame().catch(error => {
+        console.error('游戏初始化失败:', error);
+        // 如果初始化失败，至少隐藏加载界面
+        DOM.loadingOverlay.style.display = 'none';
+    });
+});
 
 // 导出给HTML使用的全局函数
 window.restartGame = restartGame;
