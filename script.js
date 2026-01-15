@@ -1,4 +1,4 @@
-// 逃离锈钴城 - 主游戏逻辑
+// 逃离锈钴城 1.0 - 主游戏逻辑（Cloudflare Pages版本）
 
 // 游戏状态对象
 const GameState = {
@@ -179,7 +179,7 @@ const BUILD_STAGES = [
     { progress: 80, name: "系统集成", description: "整合所有部件和测试", requirements: { intelligence: 45, strength: 35, gold: 500 } }
 ];
 
-// 题库（简化版，实际应从文件加载）
+// 题库（使用内置题目，不从文件加载）
 const QUESTIONS = {
     basic: [
         {
@@ -462,9 +462,54 @@ async function loadFromKV() {
                     addChatMessage(msg.sender, msg.content);
                 });
             }
+            
+            showNotification('游戏数据已从云端加载');
+        } else {
+            console.log('没有找到云端游戏数据');
         }
     } catch (error) {
         console.error('从KV加载数据失败:', error);
+    }
+}
+
+// 保存到KV存储
+async function saveToKV() {
+    if (!window.escapeRustCobaltCityAPI || !window.escapeRustCobaltCityAPI.kvService) {
+        console.log('KV服务未初始化');
+        return false;
+    }
+    
+    try {
+        const playerId = getPlayerId();
+        if (!playerId) {
+            console.log('未找到玩家ID');
+            return false;
+        }
+        
+        // 准备保存数据
+        const saveData = {
+            player: GameState.player,
+            currentDay: GameState.currentDay,
+            gold: GameState.gold,
+            buildProgress: GameState.buildProgress,
+            actionPoints: GameState.actionPoints,
+            chatCount: GameState.chatCount,
+            lastChatReset: GameState.lastChatReset,
+            lastRaid: GameState.lastRaid,
+            chatHistory: GameState.chatHistory.slice(-50),
+            isGameActive: GameState.isGameActive,
+            totalAttributes: GameState.player ? Object.values(GameState.player.attributes).reduce((a, b) => a + b, 0) : 0,
+            lastActive: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+        };
+        
+        // 保存到KV
+        const result = await window.escapeRustCobaltCityAPI.kvService.savePlayerData(playerId, saveData);
+        console.log('KV保存结果:', result);
+        return result && result.success;
+    } catch (error) {
+        console.error('保存到KV失败:', error);
+        return false;
     }
 }
 
@@ -699,46 +744,66 @@ async function generateStory() {
     DOM.storyText.style.display = 'none';
     DOM.continueGameBtn.style.display = 'none';
     
-    // 模拟AI API调用延迟
-    setTimeout(() => {
-        const player = GameState.player;
-        
-        // 生成玩家背景故事
-        const backgrounds = [
-            `你是锈钴城的${player.gender === 'male' ? '一名普通居民' : '一位普通市民'}，代号"${player.code}"。封锁已持续一周，资源日渐稀缺。`,
-            `作为锈钴城的${player.profession === 'student' ? '学生' : player.profession === 'lawyer' ? '律师' : player.profession === 'police' ? '警员' : player.profession === 'merchant' ? '商人' : '明星'}，你目睹了城市从繁荣到绝望的转变。`,
-            `封锁令下，锈钴城成为孤岛。你，代号"${player.code}"，决定不再坐以待毙，寻找一线生机。`,
-            `在锈钴城被封锁的第七天，代号"${player.code}"的你意识到，等待救援只是徒劳，必须主动寻找出路。`
-        ];
-        
-        const tasks = [
-            `TL001系统绑定成功。任务：30天内建造新能源汽车逃离。倒计时开始，${player.code}，你的选择将决定生死。`,
-            `TL001系统启动。主线：收集资源，学习技术，30天完成新能源汽车建造。逃离锈钴城，这是唯一的机会。`,
-            `系统绑定：TL001。目标：新能源汽车建造计划。时间：30天。警告：失败意味着永久困于锈钴城。`,
-            `TL001系统激活。逃离计划启动：30天倒计时。建造新能源汽车，突破封锁线。祝你好运，${player.code}。`
-        ];
-        
-        const background = backgrounds[Math.floor(Math.random() * backgrounds.length)];
-        const task = tasks[Math.floor(Math.random() * tasks.length)];
-        
-        DOM.storyText.innerHTML = `
-            <p><strong>${player.code}的故事：</strong></p>
-            <p>${background}</p>
-            <p><strong>TL001系统指令：</strong></p>
-            <p>${task}</p>
-        `;
-        
-        DOM.loadingStory.style.display = 'none';
-        DOM.storyText.style.display = 'block';
-        DOM.continueGameBtn.style.display = 'block';
-        
-        // 更新显示
-        document.getElementById('storyPlayerInfo').textContent = `玩家：${player.code} | 职业：${getProfessionName(player.profession)}`;
-        document.getElementById('storyDayCount').textContent = `第0天`;
-        
-        // 添加到聊天历史
-        addChatMessage('system', `你好${player.code}，我是TL001系统。你是被困在锈钴城的居民，我们还有30天时间建造一辆新能源汽车逃离这里。有什么问题可以问我，但每天我只能回答5次。`);
-    }, 1500);
+    // 使用AI服务生成剧情
+    if (window.escapeRustCobaltCityAPI && window.escapeRustCobaltCityAPI.aiService) {
+        try {
+            const story = await window.escapeRustCobaltCityAPI.aiService.generateStory(GameState.player);
+            
+            DOM.storyText.innerHTML = `
+                <p><strong>${GameState.player.code}的故事：</strong></p>
+                <p>${story.playerBackground}</p>
+                <p><strong>TL001系统指令：</strong></p>
+                <p>${story.systemTask}</p>
+            `;
+        } catch (error) {
+            console.error('生成剧情失败:', error);
+            // 使用备用剧情
+            generateFallbackStory();
+        }
+    } else {
+        // 使用备用剧情
+        generateFallbackStory();
+    }
+    
+    DOM.loadingStory.style.display = 'none';
+    DOM.storyText.style.display = 'block';
+    DOM.continueGameBtn.style.display = 'block';
+    
+    // 更新显示
+    document.getElementById('storyPlayerInfo').textContent = `玩家：${GameState.player.code} | 职业：${getProfessionName(GameState.player.profession)}`;
+    document.getElementById('storyDayCount').textContent = `第0天`;
+    
+    // 添加到聊天历史
+    addChatMessage('system', `你好${GameState.player.code}，我是TL001系统。你是被困在锈钴城的居民，我们还有30天时间建造一辆新能源汽车逃离这里。有什么问题可以问我，但每天我只能回答5次。`);
+}
+
+// 备用剧情生成
+function generateFallbackStory() {
+    const player = GameState.player;
+    
+    const backgrounds = [
+        `你是锈钴城的${player.gender === 'male' ? '一名普通居民' : '一位普通市民'}，代号"${player.code}"。封锁已持续一周，资源日渐稀缺。`,
+        `作为锈钴城的${player.profession === 'student' ? '学生' : player.profession === 'lawyer' ? '律师' : player.profession === 'police' ? '警员' : player.profession === 'merchant' ? '商人' : '明星'}，你目睹了城市从繁荣到绝望的转变。`,
+        `封锁令下，锈钴城成为孤岛。你，代号"${player.code}"，决定不再坐以待毙，寻找一线生机。`,
+        `在锈钴城被封锁的第七天，代号"${player.code}"的你意识到，等待救援只是徒劳，必须主动寻找出路。`
+    ];
+    
+    const tasks = [
+        `TL001系统绑定成功。任务：30天内建造新能源汽车逃离。倒计时开始，${player.code}，你的选择将决定生死。`,
+        `TL001系统启动。主线：收集资源，学习技术，30天完成新能源汽车建造。逃离锈钴城，这是唯一的机会。`,
+        `系统绑定：TL001。目标：新能源汽车建造计划。时间：30天。警告：失败意味着永久困于锈钴城。`,
+        `TL001系统激活。逃离计划启动：30天倒计时。建造新能源汽车，突破封锁线。祝你好运，${player.code}。`
+    ];
+    
+    const background = backgrounds[Math.floor(Math.random() * backgrounds.length)];
+    const task = tasks[Math.floor(Math.random() * tasks.length)];
+    
+    DOM.storyText.innerHTML = `
+        <p><strong>${player.code}的故事：</strong></p>
+        <p>${background}</p>
+        <p><strong>TL001系统指令：</strong></p>
+        <p>${task}</p>
+    `;
 }
 
 // 切换主界面板块
@@ -820,7 +885,7 @@ function updateGameUI() {
     // 聊天次数
     DOM.chatCount.textContent = 5 - GameState.chatCount;
     
-    // 掠夺次数 - 使用新的时间戳系统
+    // 掠夺次数
     const canRaid = TimeUtils.canRaidToday();
     DOM.raidCount.textContent = canRaid ? 1 : 0;
     
@@ -840,23 +905,6 @@ function updateGameUI() {
 // 更新掠夺界面状态
 function updateRaidUI() {
     const canRaid = TimeUtils.canRaidToday();
-    const raidBtn = document.getElementById('raidActionBtn');
-    const raidStatusEl = document.getElementById('raidStatusDisplay');
-    
-    if (raidBtn) {
-        raidBtn.disabled = !canRaid;
-        raidBtn.title = canRaid ? '掠夺其他玩家' : TimeUtils.getFormattedTimeRemaining();
-    }
-    
-    if (raidStatusEl) {
-        if (canRaid) {
-            raidStatusEl.textContent = '今日可掠夺：1次';
-            raidStatusEl.style.color = 'var(--success-color)';
-        } else {
-            raidStatusEl.textContent = `已掠夺，${TimeUtils.getFormattedTimeRemaining()}`;
-            raidStatusEl.style.color = 'var(--text-secondary)';
-        }
-    }
     
     // 更新游戏主界面的资源显示
     if (DOM.raidCount) {
@@ -936,30 +984,45 @@ function sendChatMessage() {
     // 清空输入框
     DOM.chatInput.value = '';
     
-    // 模拟AI回复
-    setTimeout(() => {
-        const responses = [
-            "新能源汽车的核心是电池管理系统，需要重点关注。",
-            "建议先学习基础理论，再实践工程技术。",
-            "资源有限，合理分配行动点至关重要。",
-            "别忘了和其他玩家交流，但也要小心掠夺。",
-            "建造进度越高，所需资源和属性要求也越高。",
-            "幸运值会影响学习和工作的收益，不要忽视。",
-            "每天有5次向我提问的机会，要善加利用。",
-            "如果金币不足，可以考虑进行基础工作。",
-            "掠夺其他玩家有风险，但收益也可能很高。",
-            "记住，只有30天时间，时间管理很重要。"
-        ];
-        
-        const randomResponse = responses[Math.floor(Math.random() * responses.length)];
-        addChatMessage('system', randomResponse);
-        
-        // 更新UI
-        DOM.chatCount.textContent = 5 - GameState.chatCount;
-    }, 500);
+    // 使用AI服务生成回复
+    if (window.escapeRustCobaltCityAPI && window.escapeRustCobaltCityAPI.aiService) {
+        try {
+            const response = await window.escapeRustCobaltCityAPI.aiService.chatWithSystem(message);
+            addChatMessage('system', response.reply);
+        } catch (error) {
+            console.error('AI对话失败:', error);
+            // 使用内置回复
+            generateBuiltInChatResponse();
+        }
+    } else {
+        // 使用内置回复
+        generateBuiltInChatResponse();
+    }
+    
+    // 更新UI
+    DOM.chatCount.textContent = 5 - GameState.chatCount;
     
     // 保存游戏
     saveGame();
+}
+
+// 内置聊天回复
+function generateBuiltInChatResponse() {
+    const responses = [
+        "新能源汽车的核心是电池管理系统，需要重点关注。",
+        "建议先学习基础理论，再实践工程技术。",
+        "资源有限，合理分配行动点至关重要。",
+        "别忘了和其他玩家交流，但也要小心掠夺。",
+        "建造进度越高，所需资源和属性要求也越高。",
+        "幸运值会影响学习和工作的收益，不要忽视。",
+        "每天有5次向我提问的机会，要善加利用。",
+        "如果金币不足，可以考虑进行基础工作。",
+        "掠夺其他玩家有风险，但收益也可能很高。",
+        "记住，只有30天时间，时间管理很重要。"
+    ];
+    
+    const randomResponse = responses[Math.floor(Math.random() * responses.length)];
+    addChatMessage('system', randomResponse);
 }
 
 // 添加聊天消息
@@ -1010,34 +1073,25 @@ function startWork(jobType) {
     // 记录行动
     GameState.dailyActions.push(`进行了${job.name}工作`);
     
-    // 选择问题类型
-    const questionTypes = job.questionTypes;
-    const selectedType = questionTypes[Math.floor(Math.random() * questionTypes.length)];
-    
-    // 获取问题
-    const questions = selectedType === 'all' 
-        ? [...QUESTIONS.basic, ...QUESTIONS.engineering, ...QUESTIONS.business]
-        : QUESTIONS[selectedType];
-    
-    if (!questions || questions.length === 0) {
-        // 没有问题时直接给与奖励
+    // 使用QuestionService获取问题
+    if (window.escapeRustCobaltCityAPI && window.escapeRustCobaltCityAPI.questionService) {
+        const question = window.escapeRustCobaltCityAPI.questionService.getRandomQuestion();
+        
+        // 设置答题状态
+        currentQuiz.type = 'work';
+        currentQuiz.job = job;
+        currentQuiz.questions = [question];
+        currentQuiz.currentQuestionIndex = 0;
+        currentQuiz.correctAnswers = 0;
+        currentQuiz.selectedOption = null;
+        
+        // 显示答题界面
+        displayQuizQuestion(question);
+        DOM.workQuiz.style.display = 'flex';
+    } else {
+        // 没有QuestionService时直接完成工作
         completeWork(job, true);
-        return;
     }
-    
-    const randomQuestion = questions[Math.floor(Math.random() * questions.length)];
-    
-    // 设置答题状态
-    currentQuiz.type = 'work';
-    currentQuiz.job = job;
-    currentQuiz.questions = [randomQuestion];
-    currentQuiz.currentQuestionIndex = 0;
-    currentQuiz.correctAnswers = 0;
-    currentQuiz.selectedOption = null;
-    
-    // 显示答题界面
-    displayQuizQuestion(randomQuestion);
-    DOM.workQuiz.style.display = 'flex';
 }
 
 // 显示问题
@@ -1177,31 +1231,37 @@ function startStudy(courseType) {
     // 记录行动
     GameState.dailyActions.push(`学习了${course.name}`);
     
-    // 获取问题
-    const questions = QUESTIONS[courseType];
-    if (!questions || questions.length === 0) {
-        // 没有问题时给与基础属性
-        completeStudy(course, 0);
-        return;
+    // 使用QuestionService获取问题
+    if (window.escapeRustCobaltCityAPI && window.escapeRustCobaltCityAPI.questionService) {
+        const questions = window.escapeRustCobaltCityAPI.questionService.getQuestions(courseType, 20);
+        
+        if (!questions || questions.length === 0) {
+            // 没有问题时给与基础属性
+            completeStudy(course, 0);
+            return;
+        }
+        
+        // 随机选择20个问题
+        const selectedQuestions = [];
+        for (let i = 0; i < Math.min(20, questions.length); i++) {
+            selectedQuestions.push(questions[i]);
+        }
+        
+        // 设置答题状态
+        currentQuiz.type = 'study';
+        currentQuiz.course = course;
+        currentQuiz.questions = selectedQuestions;
+        currentQuiz.currentQuestionIndex = 0;
+        currentQuiz.correctAnswers = 0;
+        currentQuiz.selectedOption = null;
+        
+        // 显示第一个问题
+        displayQuizQuestion(selectedQuestions[0]);
+        DOM.studyQuiz.style.display = 'flex';
+    } else {
+        // 没有QuestionService时直接完成学习
+        completeStudy(course, 10); // 默认50%正确率
     }
-    
-    // 随机选择20个问题
-    const selectedQuestions = [];
-    for (let i = 0; i < Math.min(20, questions.length); i++) {
-        selectedQuestions.push(questions[Math.floor(Math.random() * questions.length)]);
-    }
-    
-    // 设置答题状态
-    currentQuiz.type = 'study';
-    currentQuiz.course = course;
-    currentQuiz.questions = selectedQuestions;
-    currentQuiz.currentQuestionIndex = 0;
-    currentQuiz.correctAnswers = 0;
-    currentQuiz.selectedOption = null;
-    
-    // 显示第一个问题
-    displayQuizQuestion(selectedQuestions[0]);
-    DOM.studyQuiz.style.display = 'flex';
 }
 
 // 提交学习答案
@@ -1794,7 +1854,8 @@ async function submitToHonor(totalAttributes) {
             gold: GameState.gold,
             buildProgress: GameState.buildProgress,
             totalAttributes: totalAttributes,
-            isGameActive: false
+            isGameActive: false,
+            escapeDate: new Date().toISOString()
         };
         
         const result = await window.escapeRustCobaltCityAPI.kvService.submitToHonor(playerId, saveData);
@@ -1809,7 +1870,7 @@ async function generateEndingText(isSuccess) {
     DOM.endingLoading.style.display = 'flex';
     DOM.endingText.style.display = 'none';
     
-    // 使用AI服务生成结局（如果可用）
+    // 使用AI服务生成结局
     if (window.escapeRustCobaltCityAPI && window.escapeRustCobaltCityAPI.aiService) {
         try {
             const gameStats = {
@@ -1817,7 +1878,8 @@ async function generateEndingText(isSuccess) {
                 gold: GameState.gold,
                 totalAttributes: Object.values(GameState.player.attributes).reduce((a, b) => a + b, 0),
                 daysUsed: GameState.currentDay - 1,
-                profession: GameState.player.profession
+                profession: GameState.player.profession,
+                playerCode: GameState.player.code
             };
             
             const ending = await window.escapeRustCobaltCityAPI.aiService.generateEnding(gameStats);
@@ -1828,19 +1890,19 @@ async function generateEndingText(isSuccess) {
                 <p>${ending.epilogue || ''}</p>
             `;
         } catch (error) {
-            console.error('AI生成结局失败，使用模拟结局:', error);
-            generateSimulatedEnding(isSuccess);
+            console.error('AI生成结局失败，使用内置结局:', error);
+            generateBuiltInEnding(isSuccess);
         }
     } else {
-        generateSimulatedEnding(isSuccess);
+        generateBuiltInEnding(isSuccess);
     }
     
     DOM.endingLoading.style.display = 'none';
     DOM.endingText.style.display = 'block';
 }
 
-// 生成模拟结局
-function generateSimulatedEnding(isSuccess) {
+// 内置结局生成
+function generateBuiltInEnding(isSuccess) {
     const player = GameState.player;
     
     let endingText = '';
@@ -1904,20 +1966,15 @@ async function saveGame() {
         // 1. 保存到本地存储
         localStorage.setItem('escapeRustCobaltCity', JSON.stringify(saveData));
         
-        // 2. 保存到Cloudflare KV（如果API可用）
-        if (window.escapeRustCobaltCityAPI && window.escapeRustCobaltCityAPI.kvService) {
-            const playerId = getPlayerId();
-            
-            if (playerId) {
-                // 异步保存到KV
-                const result = await window.escapeRustCobaltCityAPI.kvService.savePlayerData(playerId, saveData);
-                console.log('KV保存结果:', result);
-            }
+        // 2. 保存到Cloudflare KV（如果API可用且游戏活跃）
+        if (window.escapeRustCobaltCityAPI && window.escapeRustCobaltCityAPI.kvService && GameState.isGameActive) {
+            await saveToKV();
         }
         
         console.log('游戏已保存');
     } catch (error) {
         console.error('保存游戏失败:', error);
+        showNotification('保存失败: ' + error.message, 5000);
     }
 }
 
