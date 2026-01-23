@@ -3,160 +3,175 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>逃离锈钴城 1.0</title>
+    <title>逃离锈钴城</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700&family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700&family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/x-icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🚗</text></svg>">
 </head>
 <body>
     <!-- 加载覆盖层 -->
-    <div id="loadingOverlay" class="overlay">
+    <div class="overlay" id="loadingOverlay">
         <div class="loading-container">
             <div class="loader"></div>
-            <p class="loading-text">系统初始化中...</p>
+            <div class="loading-text" id="loadingText">正在加载逃离锈钴城...</div>
         </div>
     </div>
 
     <!-- 创建角色界面 -->
-    <div id="characterCreation" class="screen active">
-        <div class="creation-container">
-            <h1 class="game-title">
-                <i class="fas fa-car-crash"></i> 逃离锈钴城
-            </h1>
-            <p class="game-subtitle">在资源枯竭的城市中，打造一辆新能源汽车，寻找生存的希望</p>
-            
-            <div class="creation-form">
-                <div class="form-group">
-                    <label for="playerCode">你的代号（不超过5字）</label>
-                    <input type="text" id="playerCode" maxlength="5" placeholder="如：破晓者">
-                    <div class="hint" id="codeHint"></div>
-                </div>
+    <div class="screen active" id="screenCreation">
+        <div class="container">
+            <div class="creation-container">
+                <h1 class="game-title"><i class="fas fa-car-crash"></i>逃离锈钴城</h1>
+                <p class="game-subtitle">30天倒计时已经开始，建造你的新能源汽车，逃离这座绝望之城</p>
                 
-                <div class="form-group">
-                    <label for="gender">性别</label>
-                    <select id="gender">
-                        <option value="male">男性</option>
-                        <option value="female">女性</option>
-                    </select>
-                </div>
-                
-                <div class="form-group">
-                    <label for="profession">职业选择</label>
-                    <select id="profession">
-                        <option value="student">学生（幸运获取×2）</option>
-                        <option value="lawyer">律师（智力获取×2）</option>
-                        <option value="police">警员（武力获取×2）</option>
-                        <option value="merchant">商人（交际获取×2）</option>
-                        <option value="star">明星（气质获取×2）</option>
-                    </select>
-                </div>
-                
-                <div class="form-group">
-                    <label>属性分配（共80点）</label>
+                <form class="creation-form" id="creationForm">
+                    <div class="form-group">
+                        <label for="playerName">真实姓名（荣誉榜显示）</label>
+                        <input type="text" id="playerName" name="playerName" placeholder="输入你的真实姓名" required maxlength="10">
+                        <div class="hint">仅用于荣誉榜显示，游戏内使用代号</div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="playerCode">游戏代号（≤5字）</label>
+                        <input type="text" id="playerCode" name="playerCode" placeholder="输入你的游戏代号" required maxlength="5">
+                        <div class="hint">游戏内显示的名称，不超过5个字</div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="playerGender">性别</label>
+                        <select id="playerGender" name="playerGender" required>
+                            <option value="">请选择性别</option>
+                            <option value="male">男性</option>
+                            <option value="female">女性</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="playerProfession">职业</label>
+                        <select id="playerProfession" name="playerProfession" required>
+                            <option value="">请选择职业</option>
+                            <option value="student">学生（幸运×2）</option>
+                            <option value="lawyer">律师（智力×2）</option>
+                            <option value="police">警员（武力×2）</option>
+                            <option value="merchant">商人（交际×2）</option>
+                            <option value="star">明星（气质×2）</option>
+                        </select>
+                        <div class="hint">职业将影响特定属性的获取倍率</div>
+                    </div>
+                    
                     <div class="points-display">
-                        <span>剩余点数：</span>
-                        <span id="remainingPoints">80</span>
+                        剩余属性点：<span id="remainingPoints">80</span>
                     </div>
                     
                     <div class="attribute-control">
                         <div class="attr-item">
                             <label for="intelligence">智力</label>
                             <div class="attr-slider">
-                                <button class="attr-btn minus" data-attr="intelligence">-</button>
-                                <input type="number" id="intelligence" class="attr-input" value="16" min="1" max="79">
-                                <button class="attr-btn plus" data-attr="intelligence">+</button>
+                                <button type="button" class="attr-btn" data-attr="intelligence" data-action="decrease">-</button>
+                                <input type="number" class="attr-input" id="intelligence" name="intelligence" value="10" min="1" max="80" readonly>
+                                <button type="button" class="attr-btn" data-attr="intelligence" data-action="increase">+</button>
                             </div>
+                            <div class="attr-desc">影响学习和解题能力</div>
                         </div>
                         
                         <div class="attr-item">
                             <label for="strength">武力</label>
                             <div class="attr-slider">
-                                <button class="attr-btn minus" data-attr="strength">-</button>
-                                <input type="number" id="strength" class="attr-input" value="16" min="1" max="79">
-                                <button class="attr-btn plus" data-attr="strength">+</button>
+                                <button type="button" class="attr-btn" data-attr="strength" data-action="decrease">-</button>
+                                <input type="number" class="attr-input" id="strength" name="strength" value="10" min="1" max="80" readonly>
+                                <button type="button" class="attr-btn" data-attr="strength" data-action="increase">+</button>
                             </div>
+                            <div class="attr-desc">影响战斗和体力工作</div>
                         </div>
                         
                         <div class="attr-item">
                             <label for="communication">交际</label>
                             <div class="attr-slider">
-                                <button class="attr-btn minus" data-attr="communication">-</button>
-                                <input type="number" id="communication" class="attr-input" value="16" min="1" max="79">
-                                <button class="attr-btn plus" data-attr="communication">+</button>
+                                <button type="button" class="attr-btn" data-attr="communication" data-action="decrease">-</button>
+                                <input type="number" class="attr-input" id="communication" name="communication" value="10" min="1" max="80" readonly>
+                                <button type="button" class="attr-btn" data-attr="communication" data-action="increase">+</button>
                             </div>
+                            <div class="attr-desc">影响交易和谈判能力</div>
                         </div>
                         
                         <div class="attr-item">
                             <label for="charm">气质</label>
                             <div class="attr-slider">
-                                <button class="attr-btn minus" data-attr="charm">-</button>
-                                <input type="number" id="charm" class="attr-input" value="16" min="1" max="79">
-                                <button class="attr-btn plus" data-attr="charm">+</button>
+                                <button type="button" class="attr-btn" data-attr="charm" data-action="decrease">-</button>
+                                <input type="text" class="attr-input" id="charm" name="charm" value="10" min="1" max="80" readonly>
+                                <button type="button" class="attr-btn" data-attr="charm" data-action="increase">+</button>
                             </div>
+                            <div class="attr-desc">影响说服力和魅力</div>
                         </div>
                         
                         <div class="attr-item">
                             <label for="luck">幸运</label>
                             <div class="attr-slider">
-                                <button class="attr-btn minus" data-attr="luck">-</button>
-                                <input type="number" id="luck" class="attr-input" value="16" min="1" max="79">
-                                <button class="attr-btn plus" data-attr="luck">+</button>
+                                <button type="button" class="attr-btn" data-attr="luck" data-action="decrease">-</button>
+                                <input type="number" class="attr-input" id="luck" name="luck" value="10" min="1" max="80" readonly>
+                                <button type="button" class="attr-btn" data-attr="luck" data-action="increase">+</button>
                             </div>
+                            <div class="attr-desc">影响随机事件和收益</div>
                         </div>
                     </div>
-                </div>
-                
-                <button id="startGameBtn" class="btn-primary">
-                    <i class="fas fa-play"></i> 开始游戏
-                </button>
-                
-                <div class="game-info">
-                    <p><i class="fas fa-info-circle"></i> 游戏提示：合理分配属性点，不同的职业会影响属性获取效率</p>
-                </div>
+                    
+                    <div class="game-info">
+                        <p><i class="fas fa-info-circle"></i>每个属性最低1点，最高80点。职业倍率在游戏中生效，创建时不改变初始点数。</p>
+                    </div>
+                    
+                    <button type="submit" class="btn-primary btn-large" id="startGameBtn">
+                        <i class="fas fa-play"></i>开始游戏
+                    </button>
+                </form>
             </div>
         </div>
     </div>
 
-    <!-- 导入剧情界面 -->
-    <div id="storyIntro" class="screen">
-        <div class="story-container">
-            <div class="story-header">
-                <h2><i class="fas fa-satellite-dish"></i> TL001系统启动</h2>
-                <div class="story-meta">
-                    <span id="storyPlayerInfo">玩家：</span>
-                    <span id="storyDayCount">第0天</span>
+    <!-- 故事导入界面 -->
+    <div class="screen" id="screenStory">
+        <div class="container">
+            <div class="story-container">
+                <div class="story-header">
+                    <h2>锈钴城的黎明</h2>
+                    <div class="story-meta">
+                        <span><i class="far fa-calendar"></i> 封锁第1天</span>
+                        <span><i class="fas fa-user"></i> <span id="storyPlayerCode"></span></span>
+                    </div>
                 </div>
-            </div>
-            
-            <div class="story-content">
-                <div id="loadingStory" class="loading-story">
-                    <div class="loading-spinner"></div>
-                    <p>TL001系统正在生成您的故事背景...</p>
+                
+                <div class="story-content">
+                    <div class="loading-story" id="storyLoading">
+                        <div class="loading-spinner"></div>
+                        <p>正在生成你的故事背景...</p>
+                    </div>
+                    <div class="story-text" id="storyText" style="display: none;"></div>
                 </div>
-                <div id="storyText" class="story-text" style="display: none;">
-                    <!-- AI生成的剧情将在这里显示 -->
+                
+                <div class="story-actions">
+                    <button class="btn-secondary" id="regenerateStoryBtn">
+                        <i class="fas fa-redo"></i>重新生成
+                    </button>
+                    <button class="btn-primary btn-large" id="startPlanBtn">
+                        <i class="fas fa-rocket"></i>开始30天逃离计划
+                    </button>
                 </div>
-            </div>
-            
-            <div class="story-actions">
-                <button id="skipStoryBtn" class="btn-secondary">
-                    <i class="fas fa-forward"></i> 跳过剧情
-                </button>
-                <button id="continueGameBtn" class="btn-primary" style="display: none;">
-                    <i class="fas fa-rocket"></i> 开始30天逃离计划
-                </button>
             </div>
         </div>
     </div>
 
     <!-- 游戏主界面 -->
-    <div id="gameMain" class="screen">
+    <div class="screen" id="screenMain">
+        <!-- 游戏顶部栏 -->
         <div class="game-header">
             <div class="header-left">
-                <h2><i class="fas fa-city"></i> 锈钴城</h2>
+                <h2><i class="fas fa-car-crash"></i> 逃离锈钴城</h2>
                 <div class="player-info">
-                    <span id="playerNameDisplay">代号：</span>
-                    <span id="currentDay">第1天</span>
+                    <span><i class="fas fa-user-secret"></i> <span id="displayPlayerCode"></span></span>
+                    <span><i class="fas fa-briefcase"></i> <span id="displayProfession"></span></span>
+                    <span><i class="far fa-calendar"></i> 第 <span id="currentDay">1</span> 天</span>
                 </div>
             </div>
             
@@ -165,440 +180,296 @@
                     <div class="resource">
                         <i class="fas fa-bolt"></i>
                         <span>行动点：</span>
-                        <span id="actionPoints">5/5</span>
+                        <span id="actionPoints">5</span>/5
                     </div>
                     <div class="resource">
                         <i class="fas fa-coins"></i>
                         <span>金币：</span>
-                        <span id="goldAmount">0</span>
+                        <span id="goldCoins">0</span>
                     </div>
                     <div class="resource">
-                        <i class="fas fa-tools"></i>
+                        <i class="fas fa-tachometer-alt"></i>
                         <span>建造进度：</span>
-                        <span id="buildProgress">0%</span>
+                        <span id="buildProgress">0</span>%
                     </div>
                 </div>
             </div>
             
             <div class="header-right">
-                <button id="saveGameBtn" class="btn-icon" title="保存游戏">
-                    <i class="fas fa-save"></i>
+                <button class="btn-icon" id="soundToggle" title="音效开关">
+                    <i class="fas fa-volume-up"></i>
                 </button>
-                <button id="restartGameBtn" class="btn-icon" title="重新开始">
-                    <i class="fas fa-redo"></i>
+                <button class="btn-secondary" id="restartBtn">
+                    <i class="fas fa-redo"></i> 重开游戏
                 </button>
             </div>
         </div>
         
+        <!-- 游戏主体 -->
         <div class="game-body">
+            <!-- 侧边栏导航 -->
             <div class="sidebar">
-                <nav class="game-nav">
+                <div class="game-nav">
                     <button class="nav-btn active" data-section="system">
-                        <i class="fas fa-cog"></i> 系统
+                        <i class="fas fa-robot"></i>
+                        <span>系统</span>
                     </button>
                     <button class="nav-btn" data-section="work">
-                        <i class="fas fa-briefcase"></i> 工作
+                        <i class="fas fa-briefcase"></i>
+                        <span>工作</span>
                     </button>
                     <button class="nav-btn" data-section="study">
-                        <i class="fas fa-graduation-cap"></i> 学习
+                        <i class="fas fa-graduation-cap"></i>
+                        <span>学习</span>
                     </button>
-                    <button class="nav-btn" data-section="rank">
-                        <i class="fas fa-trophy"></i> 排行榜
+                    <button class="nav-btn" data-section="rankings">
+                        <i class="fas fa-trophy"></i>
+                        <span>排行榜</span>
                     </button>
                     <button class="nav-btn" data-section="build">
-                        <i class="fas fa-hammer"></i> 建造
+                        <i class="fas fa-tools"></i>
+                        <span>建造</span>
                     </button>
                     <button class="nav-btn" data-section="raid">
-                        <i class="fas fa-fist-raised"></i> 掠夺
+                        <i class="fas fa-fist-raised"></i>
+                        <span>掠夺</span>
                     </button>
                     <button class="nav-btn" data-section="nextday">
-                        <i class="fas fa-forward"></i> 下一天
+                        <i class="fas fa-forward"></i>
+                        <span>进入下一天</span>
                     </button>
-                </nav>
+                </div>
                 
                 <div class="quick-stats">
                     <h4>属性概览</h4>
                     <div class="stat-bar">
                         <label>智力</label>
                         <div class="progress-bar">
-                            <div class="progress-fill" id="stat-intel" style="width: 20%"></div>
+                            <div class="progress-fill" id="statIntelligence" style="width: 10%"></div>
                         </div>
-                        <span id="stat-intel-value">16</span>
+                        <span id="statIntelligenceValue">10</span>
                     </div>
                     <div class="stat-bar">
                         <label>武力</label>
                         <div class="progress-bar">
-                            <div class="progress-fill" id="stat-str" style="width: 20%"></div>
+                            <div class="progress-fill" id="statStrength" style="width: 10%"></div>
                         </div>
-                        <span id="stat-str-value">16</span>
+                        <span id="statStrengthValue">10</span>
                     </div>
                     <div class="stat-bar">
                         <label>交际</label>
                         <div class="progress-bar">
-                            <div class="progress-fill" id="stat-comm" style="width: 20%"></div>
+                            <div class="progress-fill" id="statCommunication" style="width: 10%"></div>
                         </div>
-                        <span id="stat-comm-value">16</span>
+                        <span id="statCommunicationValue">10</span>
                     </div>
                     <div class="stat-bar">
                         <label>气质</label>
                         <div class="progress-bar">
-                            <div class="progress-fill" id="stat-charm" style="width: 20%"></div>
+                            <div class="progress-fill" id="statCharm" style="width: 10%"></div>
                         </div>
-                        <span id="stat-charm-value">16</span>
+                        <span id="statCharmValue">10</span>
                     </div>
                     <div class="stat-bar">
                         <label>幸运</label>
                         <div class="progress-bar">
-                            <div class="progress-fill" id="stat-luck" style="width: 20%"></div>
+                            <div class="progress-fill" id="statLuck" style="width: 10%"></div>
                         </div>
-                        <span id="stat-luck-value">16</span>
+                        <span id="statLuckValue">10</span>
                     </div>
                 </div>
             </div>
             
+            <!-- 主内容区域 -->
             <div class="main-content">
                 <!-- 系统面板 -->
-                <div id="systemSection" class="content-section active">
-                    <h3><i class="fas fa-cog"></i> 系统面板</h3>
-                    <div class="system-tabs">
-                        <button class="tab-btn active" data-tab="attributes">属性详情</button>
-                        <button class="tab-btn" data-tab="systemChat">调戏系统</button>
+                <div class="content-section active" id="sectionSystem">
+                    <h3><i class="fas fa-robot"></i> TL001系统</h3>
+                    <div class="section-description">
+                        我是TL001系统，将协助你完成逃离锈钴城的计划。每天有5次对话机会，今天剩余：<span id="chatLimit">5</span>次。你可以询问关于新能源汽车的知识、建造建议或其他问题。
                     </div>
                     
-                    <div class="tab-content active" id="attributesTab">
-                        <div class="attribute-details">
-                            <div class="detail-card">
-                                <h4>角色信息</h4>
-                                <p><strong>代号：</strong><span id="detail-code">-</span></p>
-                                <p><strong>职业：</strong><span id="detail-profession">-</span></p>
-                                <p><strong>当前状态：</strong><span id="detail-status">生存中</span></p>
+                    <div class="chat-container">
+                        <div class="chat-header">
+                            <div class="chat-info">
+                                对话记录 <span id="chatCount">0</span> 条
                             </div>
-                            
-                            <div class="detail-card">
-                                <h4>属性详情</h4>
-                                <div class="detail-grid">
-                                    <div class="detail-item">
-                                        <span class="attr-label">智力</span>
-                                        <span class="attr-value" id="detail-intel">16</span>
-                                        <div class="attr-desc">影响学习效率和工作解题</div>
-                                    </div>
-                                    <div class="detail-item">
-                                        <span class="attr-label">武力</span>
-                                        <span class="attr-value" id="detail-str">16</span>
-                                        <div class="attr-desc">影响掠夺和部分工作</div>
-                                    </div>
-                                    <div class="detail-item">
-                                        <span class="attr-label">交际</span>
-                                        <span class="attr-value" id="detail-comm">16</span>
-                                        <div class="attr-desc">影响交易和谈判</div>
-                                    </div>
-                                    <div class="detail-item">
-                                        <span class="attr-label">气质</span>
-                                        <span class="attr-value" id="detail-charm">16</span>
-                                        <div class="attr-desc">影响说服力和魅力</div>
-                                    </div>
-                                    <div class="detail-item">
-                                        <span class="attr-label">幸运</span>
-                                        <span class="attr-value" id="detail-luck">16</span>
-                                        <div class="attr-desc">影响随机事件和收益</div>
-                                    </div>
-                                </div>
+                            <button class="btn-icon" id="clearChatBtn" title="清空对话">
+                                <i class="fas fa-trash-alt"></i>
+                            </button>
+                        </div>
+                        
+                        <div class="chat-messages" id="chatMessages">
+                            <div class="message system">
+                                <div class="message-sender">TL001系统</div>
+                                你好，我是TL001系统，将协助你完成逃离锈钴城的计划。请合理利用每天的对话机会，我会尽力提供帮助。
                             </div>
                         </div>
-                    </div>
-                    
-                    <div class="tab-content" id="systemChatTab">
-                        <div class="chat-container">
-                            <div class="chat-header">
-                                <h4>与TL001对话</h4>
-                                <div class="chat-info">
-                                    <span>今日剩余次数：</span>
-                                    <span id="chatCount">5</span>
-                                </div>
-                            </div>
-                            
-                            <div class="chat-messages" id="chatMessages">
-                                <div class="message system">
-                                    <div class="message-sender">TL001</div>
-                                    <div class="message-content">你好，我是TL001系统。你是被困在锈钴城的居民，我们还有30天时间建造一辆新能源汽车逃离这里。有什么问题可以问我，但每天我只能回答5次。</div>
-                                </div>
-                            </div>
-                            
-                            <div class="chat-input">
-                                <textarea id="chatInput" placeholder="输入你的问题（最多200字）..." maxlength="200"></textarea>
-                                <button id="sendChatBtn" class="btn-primary">
-                                    <i class="fas fa-paper-plane"></i> 发送
-                                </button>
-                            </div>
+                        
+                        <div class="chat-input">
+                            <textarea id="chatInput" placeholder="输入你的问题（最多200字）..." maxlength="200"></textarea>
+                            <button class="btn-action" id="sendChatBtn">
+                                <i class="fas fa-paper-plane"></i> 发送
+                            </button>
                         </div>
                     </div>
                 </div>
                 
                 <!-- 工作面板 -->
-                <div id="workSection" class="content-section">
+                <div class="content-section" id="sectionWork">
                     <h3><i class="fas fa-briefcase"></i> 工作</h3>
-                    <p class="section-description">消耗1行动点进行工作赚取金币。根据你的属性，可以解锁更好的工作。工作时会遇到问题，答对收益翻倍。</p>
-                    
-                    <div class="job-list">
-                        <div class="job-card" data-job="basic" data-cost="1">
-                            <h4>基础劳动</h4>
-                            <p>在工厂搬运物资</p>
-                            <div class="job-reward">
-                                <i class="fas fa-coins"></i> 基础收益：10-20金币
-                            </div>
-                            <div class="job-requirements">
-                                <span class="req">需求：无</span>
-                            </div>
-                            <button class="btn-action work-btn" data-job="basic">
-                                <i class="fas fa-hammer"></i> 开始工作
-                            </button>
-                        </div>
-                        
-                        <div class="job-card locked" data-job="technical" data-cost="1">
-                            <h4>技术助手</h4>
-                            <p>协助工程师维修设备</p>
-                            <div class="job-reward">
-                                <i class="fas fa-coins"></i> 基础收益：20-40金币
-                            </div>
-                            <div class="job-requirements">
-                                <span class="req">需求：智力≥30</span>
-                            </div>
-                            <button class="btn-action work-btn" data-job="technical" disabled>
-                                <i class="fas fa-lock"></i> 未解锁
-                            </button>
-                        </div>
-                        
-                        <div class="job-card locked" data-job="security" data-cost="1">
-                            <h4>安保工作</h4>
-                            <p>维持区域治安</p>
-                            <div class="job-reward">
-                                <i class="fas fa-coins"></i> 基础收益：25-50金币
-                            </div>
-                            <div class="job-requirements">
-                                <span class="req">需求：武力≥30</span>
-                            </div>
-                            <button class="btn-action work-btn" data-job="security" disabled>
-                                <i class="fas fa-lock"></i> 未解锁
-                            </button>
-                        </div>
-                        
-                        <div class="job-card locked" data-job="management" data-cost="2">
-                            <h4>管理工作</h4>
-                            <p>协调资源分配</p>
-                            <div class="job-reward">
-                                <i class="fas fa-coins"></i> 基础收益：40-80金币
-                            </div>
-                            <div class="job-requirements">
-                                <span class="req">需求：交际≥40，气质≥30</span>
-                            </div>
-                            <button class="btn-action work-btn" data-job="management" disabled>
-                                <i class="fas fa-lock"></i> 未解锁
-                            </button>
-                        </div>
+                    <div class="section-description">
+                        选择合适的工作赚取金币。属性越高，可解锁的工作越好。每次工作会随机遇到一个问题，答对可使收益翻倍。
                     </div>
                     
-                    <div id="workQuiz" class="quiz-modal" style="display: none;">
-                        <div class="quiz-content">
-                            <h4>工作测试题</h4>
-                            <div id="workQuestion" class="quiz-question"></div>
-                            <div class="quiz-options">
-                                <!-- 选项将通过JS动态生成 -->
-                            </div>
-                            <div class="quiz-actions">
-                                <button id="submitWorkAnswer" class="btn-primary">提交答案</button>
-                            </div>
-                        </div>
+                    <div class="tab-buttons" id="workTabs">
+                        <button class="tab-btn active" data-work="labor">基础劳动</button>
+                        <button class="tab-btn" data-work="technical">技术工作</button>
+                        <button class="tab-btn" data-work="management">管理工作</button>
+                        <button class="tab-btn" data-work="expert">专家工作</button>
+                    </div>
+                    
+                    <div class="job-list" id="jobList">
+                        <!-- 工作卡片将通过JS动态生成 -->
                     </div>
                 </div>
                 
                 <!-- 学习面板 -->
-                <div id="studySection" class="content-section">
+                <div class="content-section" id="sectionStudy">
                     <h3><i class="fas fa-graduation-cap"></i> 学习</h3>
-                    <p class="section-description">消耗1行动点学习新能源汽车相关知识。完成20道题目，根据正确率提升属性。幸运值会影响收益。</p>
-                    
-                    <div class="course-list">
-                        <div class="course-card" data-course="basic">
-                            <h4>基础理论</h4>
-                            <p>新能源汽车基本原理</p>
-                            <div class="course-effects">
-                                <i class="fas fa-brain"></i> 主要提升：智力
-                                <br>
-                                <i class="fas fa-star"></i> 次要提升：幸运
-                            </div>
-                            <button class="btn-action study-btn" data-course="basic">
-                                <i class="fas fa-book-open"></i> 开始学习
-                            </button>
-                        </div>
-                        
-                        <div class="course-card" data-course="engineering">
-                            <h4>工程技术</h4>
-                            <p>汽车构造与制造</p>
-                            <div class="course-effects">
-                                <i class="fas fa-dumbbell"></i> 主要提升：武力
-                                <br>
-                                <i class="fas fa-brain"></i> 次要提升：智力
-                            </div>
-                            <button class="btn-action study-btn" data-course="engineering">
-                                <i class="fas fa-book-open"></i> 开始学习
-                            </button>
-                        </div>
-                        
-                        <div class="course-card" data-course="business">
-                            <h4>商务管理</h4>
-                            <p>资源调配与沟通</p>
-                            <div class="course-effects">
-                                <i class="fas fa-handshake"></i> 主要提升：交际
-                                <br>
-                                <i class="fas fa-crown"></i> 次要提升：气质
-                            </div>
-                            <button class="btn-action study-btn" data-course="business">
-                                <i class="fas fa-book-open"></i> 开始学习
-                            </button>
-                        </div>
+                    <div class="section-description">
+                        学习新能源汽车专业知识，通过答题提升属性。每次学习完成20道题，根据正确率获得属性提升。幸运值会影响最终收益。
                     </div>
                     
-                    <div id="studyQuiz" class="quiz-modal" style="display: none;">
-                        <div class="quiz-content">
-                            <h4>学习测试</h4>
-                            <div class="quiz-progress">
-                                进度：<span id="studyProgress">1</span>/20
-                            </div>
-                            <div id="studyQuestion" class="quiz-question"></div>
-                            <div class="quiz-options">
-                                <!-- 选项将通过JS动态生成 -->
-                            </div>
-                            <div class="quiz-actions">
-                                <button id="submitStudyAnswer" class="btn-primary">提交答案</button>
-                            </div>
-                        </div>
+                    <div class="tab-buttons" id="studyTabs">
+                        <button class="tab-btn active" data-course="basic">基础理论</button>
+                        <button class="tab-btn" data-course="engineering">工程技术</button>
+                        <button class="tab-btn" data-course="business">商务管理</button>
+                    </div>
+                    
+                    <div class="course-list" id="courseList">
+                        <!-- 学习课程卡片将通过JS动态生成 -->
                     </div>
                 </div>
                 
                 <!-- 排行榜面板 -->
-                <div id="rankSection" class="content-section">
+                <div class="content-section" id="sectionRankings">
                     <h3><i class="fas fa-trophy"></i> 排行榜</h3>
-                    <div class="rank-tabs">
-                        <button class="tab-btn active" data-tab="liveRank">实时榜</button>
-                        <button class="tab-btn" data-tab="honorRank">荣誉榜</button>
+                    <div class="section-description">
+                        查看所有玩家的进度。实时榜显示当前活跃玩家，荣誉榜记录成功逃离的玩家。
                     </div>
                     
-                    <div class="tab-content active" id="liveRankTab">
+                    <div class="rank-tabs">
+                        <button class="tab-btn active" data-rank="live">实时榜</button>
+                        <button class="tab-btn" data-rank="honor">荣誉榜</button>
+                    </div>
+                    
+                    <div class="tab-content active" id="rankLive">
                         <div class="rank-header">
-                            <div class="rank-refresh">
-                                <button id="refreshRank" class="btn-secondary">
-                                    <i class="fas fa-sync-alt"></i> 刷新
-                                </button>
-                            </div>
+                            <h4>实时排行榜</h4>
+                            <button class="btn-action" id="refreshRankBtn">
+                                <i class="fas fa-sync-alt"></i> 刷新
+                            </button>
                         </div>
+                        
                         <div class="rank-list">
                             <div class="rank-item header">
                                 <div class="rank-pos">排名</div>
                                 <div class="rank-player">玩家</div>
-                                <div class="rank-attr">总属性</div>
                                 <div class="rank-progress">建造进度</div>
+                                <div class="rank-total">总属性</div>
                             </div>
-                            <div id="liveRankList" class="rank-items">
-                                <!-- 排行榜数据将通过JS动态生成 -->
+                            <div class="rank-items" id="liveRankItems">
+                                <!-- 实时排行榜项将通过JS动态生成 -->
                             </div>
                         </div>
                     </div>
                     
-                    <div class="tab-content" id="honorRankTab">
+                    <div class="tab-content" id="rankHonor">
                         <div class="honor-list">
                             <div class="honor-header">
-                                <h4>逃离锈钴城的英雄们</h4>
-                                <p>成功建造新能源汽车并逃离的玩家将在此展示</p>
+                                <h4>荣誉殿堂</h4>
+                                <p>成功逃离锈钴城的勇士们</p>
                             </div>
-                            <div id="honorRankList" class="honor-items">
-                                <!-- 荣誉榜数据将通过JS动态生成 -->
+                            <div class="honor-items" id="honorItems">
+                                <!-- 荣誉榜项将通过JS动态生成 -->
                             </div>
                         </div>
                     </div>
                 </div>
                 
                 <!-- 建造面板 -->
-                <div id="buildSection" class="content-section">
-                    <h3><i class="fas fa-hammer"></i> 建造新能源汽车</h3>
-                    <p class="section-description">消耗金币和行动点进行建造。建造进度越高，所需属性和金币越多。需要100%进度才能逃离。</p>
+                <div class="content-section" id="sectionBuild">
+                    <h3><i class="fas fa-tools"></i> 建造新能源汽车</h3>
+                    <div class="section-description">
+                        建造进度：<span id="buildPercentage">0</span>%。完成新能源汽车的建造是你逃离锈钴城的唯一希望。每次建造消耗金币并增加5-10%的进度。
+                    </div>
                     
                     <div class="build-progress-container">
                         <div class="progress-visual">
                             <div class="progress-bar large">
                                 <div class="progress-fill" id="buildProgressBar" style="width: 0%"></div>
                             </div>
-                            <div class="progress-text">
-                                <span id="buildPercent">0%</span>
-                            </div>
+                            <div class="progress-text" id="buildStageText">设计规划阶段</div>
                         </div>
                         
                         <div class="build-info">
                             <div class="info-card">
                                 <h4>当前阶段</h4>
-                                <p id="buildStage">设计规划</p>
-                                <div class="stage-desc">正在规划车辆整体设计</div>
+                                <div id="buildStage">设计规划 (0-20%)</div>
+                                <div class="stage-desc">完成车辆的整体设计方案和图纸</div>
                             </div>
                             
                             <div class="info-card">
-                                <h4>下次建造需求</h4>
-                                <div class="requirements">
-                                    <div class="req-item">
-                                        <i class="fas fa-cogs"></i> 智力 ≥ <span id="req-intel">10</span>
-                                    </div>
-                                    <div class="req-item">
-                                        <i class="fas fa-fist-raised"></i> 武力 ≥ <span id="req-str">10</span>
-                                    </div>
-                                    <div class="req-item">
-                                        <i class="fas fa-coins"></i> 金币：<span id="req-gold">50</span>
-                                    </div>
-                                    <div class="req-item">
-                                        <i class="fas fa-bolt"></i> 行动点：1
-                                    </div>
+                                <h4>建造需求</h4>
+                                <div class="requirements" id="buildRequirements">
+                                    <!-- 建造需求将通过JS动态生成 -->
                                 </div>
                             </div>
                         </div>
-                    </div>
-                    
-                    <div class="build-action">
-                        <button id="startBuildBtn" class="btn-primary btn-large">
-                            <i class="fas fa-hammer"></i> 开始建造
-                        </button>
-                        <div class="build-hint">
-                            <p><i class="fas fa-info-circle"></i> 每次建造增加5-10%进度，需求会随进度增加</p>
+                        
+                        <div class="build-action">
+                            <button class="btn-primary btn-large" id="buildBtn" disabled>
+                                <i class="fas fa-hammer"></i> 开始建造（消耗1行动点）
+                            </button>
+                            <div class="build-hint" id="buildHint">请先满足当前阶段的建造需求</div>
                         </div>
                     </div>
                     
                     <div class="vehicle-preview">
-                        <h4>车辆设计图</h4>
+                        <h4>车辆预览</h4>
                         <div class="preview-container">
                             <div class="car-frame">
-                                <div class="car-part chassis" id="part-chassis"></div>
-                                <div class="car-part battery" id="part-battery"></div>
-                                <div class="car-part motor" id="part-motor"></div>
-                                <div class="car-part wheels" id="part-wheels"></div>
-                                <div class="car-part body" id="part-body"></div>
+                                <div class="car-part chassis" id="partChassis"></div>
+                                <div class="car-part battery" id="partBattery"></div>
+                                <div class="car-part motor" id="partMotor"></div>
+                                <div class="car-part wheels" id="partWheels"></div>
+                                <div class="car-part body" id="partBody"></div>
                             </div>
                         </div>
                         <div class="part-status">
-                            <div class="part-item" data-part="chassis">底盘：未完成</div>
-                            <div class="part-item" data-part="battery">电池：未完成</div>
-                            <div class="part-item" data-part="motor">电机：未完成</div>
-                            <div class="part-item" data-part="wheels">车轮：未完成</div>
-                            <div class="part-item" data-part="body">车身：未完成</div>
+                            <div class="part-item" id="partChassisStatus">底盘：未完成</div>
+                            <div class="part-item" id="partBatteryStatus">电池：未完成</div>
+                            <div class="part-item" id="partMotorStatus">电机：未完成</div>
+                            <div class="part-item" id="partWheelsStatus">车轮：未完成</div>
+                            <div class="part-item" id="partBodyStatus">车身：未完成</div>
                         </div>
                     </div>
                 </div>
                 
                 <!-- 掠夺面板 -->
-                <div id="raidSection" class="content-section">
+                <div class="content-section" id="sectionRaid">
                     <h3><i class="fas fa-fist-raised"></i> 掠夺</h3>
-                    <p class="section-description">每天可掠夺一次排行榜上的玩家。随机选择一个属性比拼，胜利可掠夺对方10%金币（至少1金币），失败无惩罚。</p>
+                    <div class="section-description">
+                        每天可以选择一名其他玩家进行掠夺。随机选择一项属性进行比拼，胜利可获得对方10%的金币。失败无惩罚。
+                    </div>
                     
                     <div class="raid-info">
                         <div class="raid-status">
                             <h4>掠夺状态</h4>
                             <div class="status-item">
                                 <span>今日剩余次数：</span>
-                                <span id="raidCount">1</span>
+                                <span id="raidRemaining">1</span>
                             </div>
                             <div class="status-item">
                                 <span>上次掠夺：</span>
@@ -609,71 +480,49 @@
                         <div class="raid-rules">
                             <h4>掠夺规则</h4>
                             <ul>
-                                <li>只能掠夺排行榜上的玩家</li>
-                                <li>随机选择智力、武力、交际、气质、幸运中的一个属性比拼</li>
-                                <li>胜利：掠夺对方10%金币（四舍五入，最低1金币）</li>
+                                <li>每天只能掠夺1次</li>
+                                <li>随机选择一项属性进行比拼</li>
+                                <li>胜利：获得目标10%金币（四舍五入）</li>
                                 <li>失败：无惩罚</li>
-                                <li>如果对方金币少于10，掠夺对方比拼的属性点1点</li>
+                                <li>目标金币少于10：掠夺1点比拼属性</li>
                             </ul>
                         </div>
                     </div>
                     
                     <div class="raid-targets">
                         <h4>可掠夺目标</h4>
-                        <div id="raidTargets" class="target-list">
+                        <div class="target-list" id="raidTargets">
                             <!-- 掠夺目标将通过JS动态生成 -->
-                        </div>
-                    </div>
-                    
-                    <div id="raidBattle" class="battle-modal" style="display: none;">
-                        <div class="battle-content">
-                            <h4>属性比拼</h4>
-                            <div class="battle-info">
-                                <div class="battle-player">
-                                    <div class="battle-name">你</div>
-                                    <div class="battle-attr-value" id="playerBattleAttr">0</div>
-                                </div>
-                                <div class="battle-vs">VS</div>
-                                <div class="battle-player">
-                                    <div class="battle-name" id="targetBattleName">对手</div>
-                                    <div class="battle-attr-value" id="targetBattleAttr">0</div>
-                                </div>
-                            </div>
-                            <div class="battle-attribute">
-                                比拼属性：<span id="battleAttribute">智力</span>
-                            </div>
-                            <div class="battle-result" id="battleResult">
-                                <!-- 战斗结果将在这里显示 -->
-                            </div>
-                            <div class="battle-actions">
-                                <button id="confirmBattle" class="btn-primary">确认</button>
-                            </div>
                         </div>
                     </div>
                 </div>
                 
-                <!-- 下一天面板 -->
-                <div id="nextdaySection" class="content-section">
+                <!-- 进入下一天面板 -->
+                <div class="content-section" id="sectionNextday">
                     <h3><i class="fas fa-forward"></i> 进入下一天</h3>
+                    <div class="section-description">
+                        今天是第 <span id="nextDayNumber">1</span> 天，剩余 <span id="daysRemaining">29</span> 天。你可以选择提前结束今天或继续行动。
+                    </div>
+                    
                     <div class="nextday-container">
                         <div class="day-summary">
-                            <h4>第 <span id="currentDayNum">1</span> 天总结</h4>
-                            <div id="dayLog" class="day-log">
-                                <!-- 当天的行动日志将在这里显示 -->
+                            <h4>今日行动总结</h4>
+                            <div class="day-log" id="dayLog">
+                                <!-- 今日行动日志将通过JS动态生成 -->
                             </div>
                         </div>
                         
                         <div class="nextday-action">
+                            <h4>进入下一天</h4>
                             <div class="action-check">
-                                <p><i class="fas fa-exclamation-triangle"></i> 注意：进入下一天后，未使用的行动点将清零</p>
+                                <p>是否确认进入下一天？未使用的行动点将不会保留。</p>
                                 <div class="check-group">
                                     <input type="checkbox" id="confirmNextDay">
                                     <label for="confirmNextDay">我确认要进入下一天</label>
                                 </div>
                             </div>
-                            
-                            <button id="nextDayBtn" class="btn-primary btn-large" disabled>
-                                <i class="fas fa-forward"></i> 进入第 <span id="nextDayNum">2</span> 天
+                            <button class="btn-primary btn-large" id="nextDayBtn" disabled>
+                                <i class="fas fa-forward"></i> 进入第 <span id="nextDayBtnText">2</span> 天
                             </button>
                         </div>
                         
@@ -681,75 +530,105 @@
                             <h4>剩余时间</h4>
                             <div class="countdown">
                                 <div class="countdown-item">
-                                    <div class="countdown-value" id="daysLeft">30</div>
+                                    <div class="countdown-value" id="countdownDays">29</div>
                                     <div class="countdown-label">天</div>
                                 </div>
                             </div>
-                            <p class="countdown-warning">30天后，必须完成新能源汽车建造才能逃离</p>
+                            <div class="countdown-warning">
+                                距离封锁解除还有 <span id="countdownTotal">29</span> 天，请抓紧时间完成建造！
+                            </div>
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 答题模态框 -->
+    <div class="quiz-modal" id="quizModal" style="display: none;">
+        <div class="quiz-content">
+            <h4 id="quizTitle">答题挑战</h4>
+            <div class="quiz-progress">
+                题目 <span id="currentQuestion">1</span> / <span id="totalQuestions">20</span>
+            </div>
+            <div class="quiz-question" id="quizQuestion">
+                <!-- 问题内容将通过JS动态生成 -->
+            </div>
+            <div class="quiz-options" id="quizOptions">
+                <!-- 选项内容将通过JS动态生成 -->
+            </div>
+            <div class="quiz-actions">
+                <button class="btn-primary" id="submitAnswerBtn" disabled>确认答案</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 战斗模态框 -->
+    <div class="battle-modal" id="battleModal" style="display: none;">
+        <div class="battle-content">
+            <h4>属性比拼</h4>
+            <div class="battle-attribute">
+                比拼属性：<span id="battleAttribute">智力</span>
+            </div>
+            <div class="battle-info">
+                <div class="battle-player">
+                    <div class="battle-name" id="playerBattleName">你</div>
+                    <div class="battle-attr-value" id="playerBattleValue">50</div>
+                </div>
+                <div class="battle-vs">VS</div>
+                <div class="battle-player">
+                    <div class="battle-name" id="targetBattleName">对手</div>
+                    <div class="battle-attr-value" id="targetBattleValue">45</div>
+                </div>
+            </div>
+            <div class="battle-result" id="battleResult">
+                <!-- 战斗结果将通过JS动态生成 -->
+            </div>
+            <div class="quiz-actions">
+                <button class="btn-primary" id="closeBattleBtn">确认</button>
             </div>
         </div>
     </div>
 
     <!-- 结局界面 -->
-    <div id="endingScreen" class="screen">
-        <div class="ending-container">
-            <div class="ending-header">
-                <h2 id="endingTitle">结局</h2>
-                <div class="ending-subtitle" id="endingSubtitle"></div>
-            </div>
-            
-            <div class="ending-content">
-                <div id="endingLoading" class="loading-story">
-                    <div class="loading-spinner"></div>
-                    <p>TL001系统正在生成结局...</p>
+    <div class="screen" id="screenEnding">
+        <div class="container">
+            <div class="ending-container">
+                <div class="ending-header">
+                    <h1 id="endingTitle">结局标题</h1>
+                    <p id="endingSubtitle">结局副标题</p>
                 </div>
-                <div id="endingText" class="ending-text" style="display: none;"></div>
                 
-                <div class="ending-stats" style="display: none;" id="endingStats">
-                    <h4>最终数据</h4>
-                    <div class="stats-grid">
-                        <div class="stat-item">
-                            <span class="stat-label">建造进度</span>
-                            <span class="stat-value" id="finalProgress">0%</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-label">剩余金币</span>
-                            <span class="stat-value" id="finalGold">0</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-label">总属性</span>
-                            <span class="stat-value" id="finalAttributes">0</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-label">使用天数</span>
-                            <span class="stat-value" id="finalDays">0</span>
+                <div class="ending-content">
+                    <div class="ending-text" id="endingText">
+                        <!-- 结局故事将通过JS动态生成 -->
+                    </div>
+                    
+                    <div class="ending-stats">
+                        <h4>游戏统计数据</h4>
+                        <div class="stats-grid" id="endingStats">
+                            <!-- 结局统计数据将通过JS动态生成 -->
                         </div>
                     </div>
                 </div>
-            </div>
-            
-            <div class="ending-actions">
-                <button id="viewHonorBtn" class="btn-secondary">
-                    <i class="fas fa-trophy"></i> 查看荣誉榜
-                </button>
-                <button id="restartFromEndingBtn" class="btn-primary">
-                    <i class="fas fa-redo"></i> 重新开始
-                </button>
+                
+                <div class="ending-actions">
+                    <button class="btn-secondary" id="viewHonorBtn">
+                        <i class="fas fa-trophy"></i> 查看荣誉榜
+                    </button>
+                    <button class="btn-primary" id="restartFromEndingBtn">
+                        <i class="fas fa-redo"></i> 重新开始
+                    </button>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- 通知弹窗 -->
-    <div id="notification" class="notification">
-        <div class="notification-content">
-            <span id="notificationText"></span>
-        </div>
+    <!-- 通知 -->
+    <div class="notification" id="notification" style="display: none;">
+        <div class="notification-content" id="notificationContent">通知内容</div>
     </div>
 
-    <script src="api.js"></script>
     <script src="script.js"></script>
 </body>
 </html>

@@ -1,1683 +1,2082 @@
-// 工具函数对象
-const Utils = {
-    // 生成唯一ID
-    generateId: () => 'player_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
-    
-    // 格式化日期
-    formatDate: (date) => {
-        return new Date(date).toLocaleDateString('zh-CN', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-    },
-    
-    // 检查是否是同一天（UTC）
-    isSameDay: (date1, date2) => {
-        const d1 = new Date(date1);
-        const d2 = new Date(date2);
-        return d1.getUTCFullYear() === d2.getUTCFullYear() &&
-               d1.getUTCMonth() === d2.getUTCMonth() &&
-               d1.getUTCDate() === d2.getUTCDate();
-    },
-    
-    // 获取今天开始的UTC时间
-    getTodayUTC: () => {
-        const now = new Date();
-        return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-    },
-    
-    // 计算幸运倍率
-    getLuckMultiplier: (luck) => {
-        if (luck < 20) return 0.5;
-        if (luck > 80) return 2.0;
-        return 1.0;
-    }
-};
+// 逃离锈钴城 - 主游戏逻辑
+// 使用IIFE封装，避免全局变量污染
+(function() {
+    'use strict';
 
-// 职业加成配置（1.0版本设计）
-const PROFESSION_BONUS = {
-    student: { luck: 2 },          // 幸运获取倍率2倍
-    lawyer: { intelligence: 2 },   // 智力获取倍率2倍
-    police: { strength: 2 },       // 武力获取倍率2倍
-    merchant: { social: 2 },       // 交际获取倍率2倍
-    star: { charm: 2 }             // 气质获取倍率2倍
-};
-
-// 工作配置（1.0版本设计，有答题环节）
-const JOBS = [
-    {
-        id: 'scrap_collector',
-        name: '废弃金属收集',
-        description: '在废墟中寻找可用的金属零件',
-        requirements: { strength: 15 },
-        baseReward: 50,
-        unlockDay: 1
-    },
-    {
-        id: 'component_salvager',
-        name: '元件回收员',
-        description: '从旧电子设备中回收可用元件',
-        requirements: { intelligence: 20 },
-        baseReward: 80,
-        unlockDay: 3
-    },
-    {
-        id: 'battery_repair',
-        name: '电池修复工',
-        description: '修复旧电池供城市使用',
-        requirements: { intelligence: 30, luck: 20 },
-        baseReward: 120,
-        unlockDay: 7
-    },
-    {
-        id: 'security_guard',
-        name: '物资守卫',
-        description: '保护珍贵的建造资源',
-        requirements: { strength: 35, social: 20 },
-        baseReward: 150,
-        unlockDay: 10
-    },
-    {
-        id: 'system_hacker',
-        name: '系统破解者',
-        description: '破解旧系统获取技术资料',
-        requirements: { intelligence: 40, charm: 25 },
-        baseReward: 200,
-        unlockDay: 15
-    }
-];
-
-// 课程配置（1.0版本设计，20题测试模式）
-const COURSES = [
-    {
-        id: 'battery_tech',
-        name: '电池技术',
-        description: '学习锂电池、燃料电池等技术',
-        mainAttribute: 'intelligence',  // 主属性
-        secondaryAttribute: 'luck',     // 副属性
-        baseGain: 3,                    // 基础获得点数
-        requirements: { intelligence: 15 }
-    },
-    {
-        id: 'motor_system',
-        name: '电机系统',
-        description: '永磁同步电机、感应电机原理',
-        mainAttribute: 'intelligence',
-        secondaryAttribute: 'strength',
-        baseGain: 3,
-        requirements: { intelligence: 25 }
-    },
-    {
-        id: 'energy_management',
-        name: '能源管理',
-        description: '电池管理系统优化',
-        mainAttribute: 'intelligence',
-        secondaryAttribute: 'social',
-        baseGain: 4,
-        requirements: { intelligence: 30 }
-    },
-    {
-        id: 'material_science',
-        name: '材料科学',
-        description: '轻量化材料应用',
-        mainAttribute: 'intelligence',
-        secondaryAttribute: 'charm',
-        baseGain: 3,
-        requirements: { intelligence: 20, social: 15 }
-    },
-    {
-        id: 'system_integration',
-        name: '系统集成',
-        description: '整车系统协调优化',
-        mainAttribute: 'intelligence',
-        secondaryAttribute: 'social',
-        baseGain: 5,
-        requirements: { intelligence: 35, charm: 20 }
-    }
-];
-
-// 建造阶段配置（1.0版本设计）
-const BUILD_STAGES = [
-    { progress: 0, name: '底盘框架', requirements: { intelligence: 20, strength: 20, gold: 100 } },
-    { progress: 20, name: '电池系统', requirements: { intelligence: 30, social: 25, gold: 200 } },
-    { progress: 40, name: '电机系统', requirements: { intelligence: 40, strength: 30, gold: 300 } },
-    { progress: 60, name: '控制系统', requirements: { intelligence: 50, charm: 35, gold: 400 } },
-    { progress: 80, name: '车身外壳', requirements: { intelligence: 60, social: 40, gold: 500 } }
-];
-
-// 题库（示例题目，实际使用时可以扩展）
-const QUESTIONS = {
-    work: [
-        {
-            question: "新能源汽车的电池管理系统主要监控什么？",
-            options: ["电压、温度、电流", "车速、里程、转向", "空调、音响、灯光", "轮胎、刹车、悬挂"],
-            answer: 0
-        },
-        {
-            question: "以下哪种电池类型在新能源汽车中最常用？",
-            options: ["铅酸电池", "镍氢电池", "锂离子电池", "镍镉电池"],
-            answer: 2
-        },
-        {
-            question: "永磁同步电机的优点是什么？",
-            options: ["成本低", "效率高", "体积大", "维护复杂"],
-            answer: 1
-        }
-    ],
-    study: [
-        {
-            question: "三元锂电池的正极材料通常包含哪些金属元素？",
-            options: ["镍、钴、锰", "锂、铁、磷", "钠、钾、镁", "铜、锌、铝"],
-            answer: 0
-        },
-        {
-            question: "新能源汽车的能量回收系统主要回收什么能量？",
-            options: ["太阳能", "风能", "制动能量", "热能"],
-            answer: 2
-        },
-        {
-            question: "以下哪种材料常用于新能源汽车的轻量化？",
-            options: ["钢铁", "铝合金", "铅", "铜"],
-            answer: 1
-        }
-    ]
-};
-
-// 游戏状态管理类
-class GameState {
-    constructor() {
-        this.player = null;
-        this.playerId = null;
-        this.day = 1;
-        this.maxDays = 30;
-        this.actions = 5;
-        this.gold = 0;
-        this.buildProgress = 0;
-        this.chatHistory = [];
-        this.chatCount = 0;
-        this.lastRaid = null;
-        this.currentJob = null;
-        this.currentCourse = null;
-        this.quizQuestions = [];
-        this.currentQuestion = 0;
-        this.correctAnswers = 0;
-        this.workQuizActive = false;
-        this.studyQuizActive = false;
-        this.raidTarget = null;
-        this.lastSaved = null;
-    }
-
-    reset() {
-        this.player = null;
-        this.playerId = null;
-        this.day = 1;
-        this.actions = 5;
-        this.gold = 0;
-        this.buildProgress = 0;
-        this.chatHistory = [];
-        this.chatCount = 0;
-        this.lastRaid = null;
-        this.currentJob = null;
-        this.currentCourse = null;
-        this.quizQuestions = [];
-        this.currentQuestion = 0;
-        this.correctAnswers = 0;
-        this.workQuizActive = false;
-        this.studyQuizActive = false;
-        this.raidTarget = null;
-        this.lastSaved = null;
-    }
-
-    // 检查需求是否满足
-    checkRequirements(requirements) {
-        if (!this.player) return false;
+    // API工具函数
+    const API = {
+        baseUrl: window.location.hostname.includes('localhost') 
+            ? 'http://localhost:8787/api' 
+            : '/api',
         
-        for (const [stat, required] of Object.entries(requirements)) {
-            if (this.player.stats[stat] < required) {
-                return false;
+        // 通用请求方法
+        async request(endpoint, options = {}) {
+            const url = `${this.baseUrl}${endpoint}`;
+            const defaultOptions = {
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            };
+            
+            try {
+                const response = await fetch(url, { ...defaultOptions, ...options });
+                
+                if (!response.ok) {
+                    throw new Error(`API请求失败: ${response.status}`);
+                }
+                
+                return await response.json();
+            } catch (error) {
+                console.error(`API请求到 ${endpoint} 失败:`, error);
+                throw error;
+            }
+        },
+        
+        // 玩家API
+        players: {
+            async create(playerData) {
+                return await API.request('/players', {
+                    method: 'POST',
+                    body: JSON.stringify(playerData)
+                });
+            },
+            
+            async update(playerId, updateData) {
+                return await API.request(`/players?id=${encodeURIComponent(playerId)}`, {
+                    method: 'PUT',
+                    body: JSON.stringify(updateData)
+                });
+            },
+            
+            async get(playerId) {
+                return await API.request(`/players?id=${encodeURIComponent(playerId)}`);
+            },
+            
+            async getAll() {
+                return await API.request('/players');
+            },
+            
+            async search(code) {
+                return await API.request(`/players?code=${encodeURIComponent(code)}`);
+            },
+            
+            async delete(playerId) {
+                return await API.request(`/players?id=${encodeURIComponent(playerId)}`, {
+                    method: 'DELETE'
+                });
+            }
+        },
+        
+        // 排行榜API
+        rankings: {
+            async get(limit = 100, offset = 0) {
+                return await API.request(`/rankings?limit=${limit}&offset=${offset}`);
+            }
+        },
+        
+        // 荣誉榜API
+        honor: {
+            async add(honorData) {
+                return await API.request('/honor', {
+                    method: 'POST',
+                    body: JSON.stringify(honorData)
+                });
+            },
+            
+            async getAll(limit = 50, offset = 0) {
+                return await API.request(`/honor?limit=${limit}&offset=${offset}`);
             }
         }
-        return true;
+    };
+
+    // 游戏状态对象
+    const gameState = {
+        player: null,
+        playerId: null,
+        day: 1,
+        actionPoints: 5,
+        gold: 0,
+        buildProgress: 0,
+        dailyLog: [],
+        chatHistory: [],
+        chatLimit: 5,
+        raidUsed: false,
+        raidTarget: null,
+        gameStarted: false,
+        actionsToday: 0
+    };
+
+    // 职业信息
+    const professions = {
+        student: { name: '学生', multiplier: { luck: 2 } },
+        lawyer: { name: '律师', multiplier: { intelligence: 2 } },
+        police: { name: '警员', multiplier: { strength: 2 } },
+        merchant: { name: '商人', multiplier: { communication: 2 } },
+        star: { name: '明星', multiplier: { charm: 2 } }
+    };
+
+    // 建造阶段信息
+    const buildStages = [
+        { min: 0, max: 20, name: '设计规划', desc: '完成车辆的整体设计方案和图纸', 
+          requirements: { intelligence: 15, gold: 100 } },
+        { min: 20, max: 40, name: '底盘制作', desc: '制造车辆底盘和框架', 
+          requirements: { strength: 20, intelligence: 20, gold: 300 } },
+        { min: 40, max: 60, name: '动力系统', desc: '安装电池和电机系统', 
+          requirements: { intelligence: 30, communication: 15, gold: 600 } },
+        { min: 60, max: 80, name: '车身制造', desc: '制造和安装车身', 
+          requirements: { charm: 20, strength: 25, gold: 1000 } },
+        { min: 80, max: 100, name: '系统集成', desc: '整合所有系统并进行测试', 
+          requirements: { intelligence: 40, communication: 25, gold: 1500 } }
+    ];
+
+    // 工作信息
+    const jobs = {
+        labor: [
+            { name: '搬运工', desc: '搬运建筑材料', baseReward: 10, 
+              requirements: { strength: 5 }, unlock: true },
+            { name: '清洁工', desc: '清理建筑工地', baseReward: 15, 
+              requirements: { strength: 8 }, unlock: false },
+            { name: '保安', desc: '看守建筑材料', baseReward: 20, 
+              requirements: { strength: 12, communication: 5 }, unlock: false },
+            { name: '工地助手', desc: '协助技工工作', baseReward: 25, 
+              requirements: { strength: 15, intelligence: 5 }, unlock: false }
+        ],
+        technical: [
+            { name: '电工助手', desc: '协助电路安装', baseReward: 30, 
+              requirements: { intelligence: 15 }, unlock: false },
+            { name: '机械学徒', desc: '学习机械维修', baseReward: 40, 
+              requirements: { intelligence: 20, strength: 10 }, unlock: false },
+            { name: '电路技术员', desc: '安装电路系统', baseReward: 50, 
+              requirements: { intelligence: 25 }, unlock: false },
+            { name: '电机技工', desc: '维修和安装电机', baseReward: 60, 
+              requirements: { intelligence: 30, strength: 15 }, unlock: false }
+        ],
+        management: [
+            { name: '工地监工', desc: '监督工人工作', baseReward: 70, 
+              requirements: { communication: 20, intelligence: 15 }, unlock: false },
+            { name: '采购员', desc: '购买建筑材料', baseReward: 80, 
+              requirements: { communication: 25, charm: 15 }, unlock: false },
+            { name: '项目经理', desc: '管理整个项目', baseReward: 90, 
+              requirements: { communication: 30, intelligence: 25 }, unlock: false },
+            { name: '团队领导', desc: '领导技术团队', baseReward: 100, 
+              requirements: { communication: 35, intelligence: 30 }, unlock: false }
+        ],
+        expert: [
+            { name: '电池专家', desc: '设计电池系统', baseReward: 120, 
+              requirements: { intelligence: 40 }, unlock: false },
+            { name: '动力工程师', desc: '设计动力系统', baseReward: 140, 
+              requirements: { intelligence: 45, strength: 20 }, unlock: false },
+            { name: '车身设计师', desc: '设计车辆外观', baseReward: 160, 
+              requirements: { charm: 35, intelligence: 30 }, unlock: false },
+            { name: '总工程师', desc: '指导整个项目', baseReward: 200, 
+              requirements: { intelligence: 50, communication: 40 }, unlock: false }
+        ]
+    };
+
+    // 学习课程信息
+    const courses = {
+        basic: [
+            { name: '新能源汽车概论', desc: '学习新能源汽车基本概念', 
+              mainAttr: 'intelligence', secAttr: 'luck', questions: 20, unlock: true },
+            { name: '电池技术基础', desc: '了解电池工作原理', 
+              mainAttr: 'intelligence', secAttr: 'strength', questions: 20, unlock: false },
+            { name: '电机原理入门', desc: '学习电机工作原理', 
+              mainAttr: 'intelligence', secAttr: 'communication', questions: 20, unlock: false }
+        ],
+        engineering: [
+            { name: '电路设计与分析', desc: '学习电路设计原理', 
+              mainAttr: 'intelligence', secAttr: 'charm', questions: 20, unlock: false },
+            { name: '车身结构设计', desc: '学习车辆结构设计', 
+              mainAttr: 'strength', secAttr: 'intelligence', questions: 20, unlock: false },
+            { name: '动力系统集成', desc: '学习动力系统整合', 
+              mainAttr: 'intelligence', secAttr: 'strength', questions: 20, unlock: false }
+        ],
+        business: [
+            { name: '项目管理', desc: '学习项目管理知识', 
+              mainAttr: 'communication', secAttr: 'intelligence', questions: 20, unlock: false },
+            { name: '团队协作', desc: '学习团队协作技巧', 
+              mainAttr: 'communication', secAttr: 'charm', questions: 20, unlock: false },
+            { name: '新能源汽车市场', desc: '了解市场趋势', 
+              mainAttr: 'charm', secAttr: 'communication', questions: 20, unlock: false }
+        ]
+    };
+
+    // 模拟题库（实际游戏中应该从服务器获取）
+    const questionBank = {
+        basic: [
+            { question: "新能源汽车主要使用哪种能源？", options: ["汽油", "柴油", "电能", "核能"], answer: 2 },
+            { question: "电池管理系统的主要作用是什么？", options: ["控制车速", "管理电池充放电", "控制空调", "导航"], answer: 1 },
+            { question: "以下哪种不是新能源汽车的类型？", options: ["纯电动汽车", "混合动力汽车", "燃料电池汽车", "柴油汽车"], answer: 3 },
+            { question: "充电桩的快充和慢充主要区别是什么？", options: ["充电速度", "充电价格", "充电接口", "充电安全"], answer: 0 },
+            { question: "电动汽车的'三电系统'不包括以下哪项？", options: ["电池", "电机", "电控", "电灯"], answer: 3 },
+            { question: "目前主流的电动汽车电池类型是什么？", options: ["铅酸电池", "镍氢电池", "锂离子电池", "钠硫电池"], answer: 2 },
+            { question: "再生制动系统的主要作用是什么？", options: ["提高车速", "回收制动能量", "增加续航", "减少噪音"], answer: 1 },
+            { question: "以下哪项不是电动汽车的优点？", options: ["零排放", "低噪音", "加速快", "续航焦虑"], answer: 3 },
+            { question: "电池的容量单位通常是什么？", options: ["伏特(V)", "安培(A)", "千瓦时(kWh)", "欧姆(Ω)"], answer: 2 },
+            { question: "电动汽车充电时，应该注意什么？", options: ["在雨天充电", "使用专用充电桩", "边充电边使用空调", "充电时间越长越好"], answer: 1 }
+        ],
+        engineering: [
+            { question: "电机的主要作用是什么？", options: ["储存电能", "将电能转化为机械能", "控制车辆", "导航"], answer: 1 },
+            { question: "以下哪种材料常用于电池正极？", options: ["锂", "钴酸锂", "铁", "铝"], answer: 1 },
+            { question: "BMS是指什么系统？", options: ["刹车系统", "电池管理系统", "车身稳定系统", "导航系统"], answer: 1 },
+            { question: "电机的功率单位是什么？", options: ["千瓦(kW)", "伏特(V)", "安时(Ah)", "牛顿米(N·m)"], answer: 0 },
+            { question: "以下哪项不是电机的主要类型？", options: ["直流电机", "交流异步电机", "永磁同步电机", "蒸汽电机"], answer: 3 },
+            { question: "电池的能量密度是指什么？", options: ["电池重量", "单位体积或重量储存的能量", "电池电压", "电池寿命"], answer: 1 },
+            { question: "电控系统的主要功能不包括？", options: ["控制电机转速", "管理电池充电", "控制空调温度", "车辆能量管理"], answer: 2 },
+            { question: "热管理系统的主要作用是什么？", options: ["保持电池温度在适宜范围", "提高车速", "减少噪音", "增加续航"], answer: 0 },
+            { question: "以下哪项是影响续航里程的主要因素？", options: ["电池容量", "车身颜色", "轮胎品牌", "座椅材质"], answer: 0 },
+            { question: "永磁同步电机的优点不包括？", options: ["高效率", "高功率密度", "结构简单", "不需要稀土材料"], answer: 3 }
+        ],
+        business: [
+            { question: "项目管理中的'三重约束'是指什么？", options: ["时间、成本、范围", "时间、质量、风险", "成本、质量、风险", "范围、质量、沟通"], answer: 0 },
+            { question: "团队协作中最重要的是什么？", options: ["沟通", "竞争", "个人能力", "设备"], answer: 0 },
+            { question: "SWOT分析不包括以下哪项？", options: ["优势", "劣势", "机会", "技术"], answer: 3 },
+            { question: "以下哪项不是有效的沟通技巧？", options: ["积极倾听", "清晰表达", "及时反馈", "打断对方"], answer: 3 },
+            { question: "冲突解决的第一步应该是什么？", options: ["识别问题", "指责对方", "回避问题", "寻求上级干预"], answer: 0 },
+            { question: "时间管理的'四象限法则'是根据什么来划分任务？", options: ["重要性和紧急性", "难易程度", "所需时间", "个人喜好"], answer: 0 },
+            { question: "以下哪项不是有效的团队建设活动？", options: ["定期会议", "团队培训", "信任建立", "个人竞赛"], answer: 3 },
+            { question: "决策过程中不应该包括？", options: ["收集信息", "分析选项", "立即执行", "评估结果"], answer: 2 },
+            { question: "领导力的核心是什么？", options: ["影响他人", "控制他人", "批评他人", "回避责任"], answer: 0 },
+            { question: "有效的反馈应该具备什么特点？", options: ["具体、及时、建设性", "模糊、延迟、批评性", "抽象、快速、赞美性", "随意、不定期、负面性"], answer: 0 }
+        ]
+    };
+
+    // 生成玩家ID
+    function generatePlayerId(playerData = null) {
+        if (playerData && playerData.name && playerData.code) {
+            // 基于玩家信息生成确定性ID
+            const str = `${playerData.name}_${playerData.code}_${Date.now()}`;
+            let hash = 0;
+            for (let i = 0; i < str.length; i++) {
+                const char = str.charCodeAt(i);
+                hash = ((hash << 5) - hash) + char;
+                hash = hash & hash; // 转换为32位整数
+            }
+            return `player_${Math.abs(hash).toString(16).substring(0, 8)}`;
+        }
+        // 随机生成ID
+        return `player_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     }
 
     // 获取当前建造阶段
-    getCurrentBuildStage() {
-        for (let i = BUILD_STAGES.length - 1; i >= 0; i--) {
-            if (this.buildProgress >= BUILD_STAGES[i].progress) {
-                return BUILD_STAGES[i];
+    function getCurrentBuildStage() {
+        for (let stage of buildStages) {
+            if (gameState.buildProgress >= stage.min && gameState.buildProgress < stage.max) {
+                return stage;
             }
         }
-        return BUILD_STAGES[0];
+        return buildStages[buildStages.length - 1];
     }
 
-    // 获取剩余天数
-    getDaysLeft() {
-        return this.maxDays - this.day + 1; // 修复NaN问题
-    }
-}
-
-// 玩家类
-class Player {
-    constructor(realName, codename, gender, profession, stats) {
-        this.realName = realName;
-        this.codename = codename;
-        this.gender = gender;
-        this.profession = profession;
-        this.stats = stats;
-        this.createdAt = new Date().toISOString();
-        this.updatedAt = new Date().toISOString();
-    }
-
-    get totalStats() {
-        return Object.values(this.stats).reduce((a, b) => a + b, 0);
-    }
-
-    // 应用职业加成到属性获取
-    applyProfessionBonus(attribute, baseGain) {
-        const bonus = PROFESSION_BONUS[this.profession];
-        if (bonus && bonus[attribute]) {
-            return baseGain * bonus[attribute];
-        }
-        return baseGain;
-    }
-}
-
-// 游戏管理器
-class GameManager {
-    constructor() {
-        this.state = new GameState();
-        this.isLoading = false;
-        this.gameEventsBound = false;
+    // 显示通知
+    function showNotification(message, type = 'info') {
+        const notification = document.getElementById('notification');
+        const notificationContent = document.getElementById('notificationContent');
         
-        // API端点配置
-        this.API_ENDPOINTS = {
-            ai: '/api/ai',
-            game: '/api/game',
-            leaderboard: '/api/leaderboard'
+        notificationContent.textContent = message;
+        
+        // 设置通知样式
+        const borderColors = {
+            'info': '#2a9d8f',
+            'success': '#2a9d8f',
+            'warning': '#e9c46a',
+            'error': '#e63946'
         };
-
-        this.init();
-    }
-
-    init() {
-        this.bindEvents();
-        this.loadFromStorage();
-        this.checkCurrentScreen();
-    }
-
-    // 绑定所有事件
-    bindEvents() {
-        // 创建角色界面事件
-        document.querySelectorAll('.profession-card').forEach(card => {
-            card.addEventListener('click', () => this.selectProfession(card));
-        });
-
-        // 属性滑块和输入框联动
-        ['intelligence', 'strength', 'social', 'charm', 'luck'].forEach(stat => {
-            const slider = document.getElementById(`${stat}-slider`);
-            const input = document.getElementById(`${stat}-input`);
-            
-            if (slider && input) {
-                slider.addEventListener('input', () => {
-                    input.value = slider.value;
-                    this.updateStatBar(stat, parseInt(slider.value));
-                    this.updateRemainingPoints();
-                });
-                
-                input.addEventListener('input', () => {
-                    let value = parseInt(input.value) || 5;
-                    if (value < 5) value = 5;
-                    if (value > 50) value = 50;
-                    input.value = value;
-                    slider.value = value;
-                    this.updateStatBar(stat, value);
-                    this.updateRemainingPoints();
-                });
-            }
-        });
-
-        document.getElementById('start-game-btn').addEventListener('click', () => this.createCharacter());
-
-        // 导入剧情界面
-        const beginEscapeBtn = document.getElementById('begin-escape-btn');
-        if (beginEscapeBtn) {
-            beginEscapeBtn.addEventListener('click', () => this.startGame());
-        }
-
-        // 确认对话框
-        document.getElementById('confirm-cancel').addEventListener('click', () => this.hideConfirm());
-        document.getElementById('confirm-ok').addEventListener('click', () => this.confirmAction());
-
-        // 如果玩家存在，绑定游戏事件
-        if (this.state.player) {
-            this.bindGameEvents();
-        }
-    }
-
-    // 绑定游戏事件（只在玩家存在时调用）
-    bindGameEvents() {
-        if (this.gameEventsBound) return;
-
-        // 导航按钮
-        document.querySelectorAll('.nav-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => this.switchSection(e.target));
-        });
-
-        // 游戏操作按钮
-        document.getElementById('next-day-btn').addEventListener('click', () => this.nextDay());
-        document.getElementById('restart-btn').addEventListener('click', () => this.confirmRestart());
-
-        // 系统界面
-        document.getElementById('send-chat-btn').addEventListener('click', () => this.sendChat());
-        const chatInput = document.getElementById('chat-input');
-        if (chatInput) {
-            chatInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') this.sendChat();
-            });
-        }
-
-        // 工作界面
-        document.getElementById('submit-work-quiz').addEventListener('click', () => this.submitWorkQuiz());
-
-        // 学习界面
-        document.getElementById('submit-study-quiz').addEventListener('click', () => this.submitStudyQuiz());
-        document.getElementById('close-study-results').addEventListener('click', () => this.closeStudyResults());
-
-        // 建造界面
-        document.getElementById('build-btn').addEventListener('click', () => this.buildCar());
-
-        // 掠夺界面
-        document.getElementById('confirm-raid').addEventListener('click', () => this.confirmRaidResult());
-
-        // 排行榜标签
-        document.querySelectorAll('.tab-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => this.switchLeaderboardTab(e.target));
-        });
-
-        // 结局界面
-        document.getElementById('restart-ending-btn').addEventListener('click', () => this.restartFromEnding());
-        document.getElementById('view-honor-btn').addEventListener('click', () => this.viewHonorBoard());
-
-        this.gameEventsBound = true;
-    }
-
-    // 更新属性进度条
-    updateStatBar(stat, value) {
-        const bar = document.getElementById(`${stat}-bar`);
-        if (bar) {
-            const percentage = (value / 50) * 100;
-            bar.style.width = `${percentage}%`;
-        }
-    }
-
-    // 更新剩余点数
-    updateRemainingPoints() {
-        const totalPoints = ['intelligence', 'strength', 'social', 'charm', 'luck']
-            .reduce((sum, stat) => {
-                const input = document.getElementById(`${stat}-input`);
-                return sum + (input ? parseInt(input.value) || 5 : 5);
-            }, 0);
         
-        const remainingPoints = 80 - totalPoints;
-        const remainingElement = document.getElementById('remaining-points');
-        if (remainingElement) {
-            remainingElement.textContent = remainingPoints;
-        }
-
-        // 更新开始按钮状态
-        const startBtn = document.getElementById('start-game-btn');
-        if (startBtn) {
-            startBtn.disabled = remainingPoints !== 0;
-        }
+        notification.style.borderLeftColor = borderColors[type] || borderColors.info;
+        
+        // 显示通知
+        notification.style.display = 'block';
+        notification.classList.add('show');
+        
+        // 3秒后隐藏通知
+        setTimeout(() => {
+            notification.classList.remove('show');
+            setTimeout(() => {
+                notification.style.display = 'none';
+            }, 300);
+        }, 3000);
+        
+        // 记录到日志
+        addToDailyLog(message);
     }
 
-    // 检查当前应该显示哪个界面
-    checkCurrentScreen() {
-        setTimeout(() => {
-            const loadingScreen = document.getElementById('loading-screen');
-            if (loadingScreen && !loadingScreen.classList.contains('hidden')) {
-                loadingScreen.classList.add('hidden');
-            }
+    // 添加到每日日志
+    function addToDailyLog(message) {
+        const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        gameState.dailyLog.push(`[${timestamp}] ${message}`);
+        updateDayLog();
+    }
+
+    // 更新每日日志显示
+    function updateDayLog() {
+        const dayLog = document.getElementById('dayLog');
+        if (!dayLog) return;
+        
+        dayLog.innerHTML = '';
+        
+        if (gameState.dailyLog.length === 0) {
+            dayLog.innerHTML = '<div class="log-entry">今天还没有任何行动记录。</div>';
+            return;
+        }
+        
+        // 只显示最近的20条日志
+        const recentLogs = gameState.dailyLog.slice(-20);
+        
+        recentLogs.forEach(log => {
+            const logEntry = document.createElement('div');
+            logEntry.className = 'log-entry';
+            logEntry.textContent = log;
+            dayLog.appendChild(logEntry);
+        });
+        
+        // 滚动到底部
+        dayLog.scrollTop = dayLog.scrollHeight;
+    }
+
+    // 更新游戏状态显示
+    function updateGameDisplay() {
+        if (!gameState.player) return;
+        
+        // 更新资源显示
+        document.getElementById('actionPoints').textContent = gameState.actionPoints;
+        document.getElementById('goldCoins').textContent = gameState.gold;
+        document.getElementById('buildProgress').textContent = gameState.buildProgress;
+        document.getElementById('displayPlayerCode').textContent = gameState.player.code;
+        document.getElementById('displayProfession').textContent = professions[gameState.player.profession].name;
+        document.getElementById('currentDay').textContent = gameState.day;
+        
+        // 更新属性显示
+        document.getElementById('statIntelligenceValue').textContent = gameState.player.intelligence;
+        document.getElementById('statStrengthValue').textContent = gameState.player.strength;
+        document.getElementById('statCommunicationValue').textContent = gameState.player.communication;
+        document.getElementById('statCharmValue').textContent = gameState.player.charm;
+        document.getElementById('statLuckValue').textContent = gameState.player.luck;
+        
+        // 更新属性进度条
+        document.getElementById('statIntelligence').style.width = `${gameState.player.intelligence}%`;
+        document.getElementById('statStrength').style.width = `${gameState.player.strength}%`;
+        document.getElementById('statCommunication').style.width = `${gameState.player.communication}%`;
+        document.getElementById('statCharm').style.width = `${gameState.player.charm}%`;
+        document.getElementById('statLuck').style.width = `${gameState.player.luck}%`;
+        
+        // 更新聊天限制
+        document.getElementById('chatLimit').textContent = gameState.chatLimit;
+        
+        // 更新掠夺状态
+        document.getElementById('raidRemaining').textContent = gameState.raidUsed ? 0 : 1;
+        
+        // 更新建造面板
+        updateBuildDisplay();
+        
+        // 更新下一天面板
+        updateNextDayDisplay();
+        
+        // 更新工作面板
+        updateWorkDisplay();
+        
+        // 更新学习面板
+        updateStudyDisplay();
+    }
+
+    // 更新建造显示
+    function updateBuildDisplay() {
+        const stage = getCurrentBuildStage();
+        
+        document.getElementById('buildPercentage').textContent = gameState.buildProgress;
+        document.getElementById('buildStageText').textContent = stage.name;
+        document.getElementById('buildStage').textContent = `${stage.name} (${stage.min}-${stage.max}%)`;
+        document.getElementById('buildProgressBar').style.width = `${gameState.buildProgress}%`;
+        
+        // 更新建造需求
+        const requirementsDiv = document.getElementById('buildRequirements');
+        requirementsDiv.innerHTML = '';
+        
+        // 添加属性需求
+        for (const [attr, value] of Object.entries(stage.requirements)) {
+            if (attr === 'gold') continue;
             
-            if (this.state.player) {
-                this.showScreen('game-screen');
-                this.updateGameUI();
-                
-                if (!this.gameEventsBound) {
-                    this.bindGameEvents();
+            const attrNames = {
+                intelligence: '智力',
+                strength: '武力',
+                communication: '交际',
+                charm: '气质'
+            };
+            
+            const reqItem = document.createElement('div');
+            reqItem.className = 'req-item';
+            
+            const hasRequirement = gameState.player[attr] >= value;
+            reqItem.innerHTML = `
+                <i class="fas fa-${hasRequirement ? 'check' : 'times'}" style="color: ${hasRequirement ? '#2a9d8f' : '#e63946'}"></i>
+                <span>${attrNames[attr]} ≥ ${value}</span>
+                <span style="margin-left: auto; color: ${hasRequirement ? '#2a9d8f' : '#e63946'}">
+                    ${gameState.player[attr]}/${value}
+                </span>
+            `;
+            requirementsDiv.appendChild(reqItem);
+        }
+        
+        // 添加金币需求
+        const goldReq = document.createElement('div');
+        goldReq.className = 'req-item';
+        const hasGold = gameState.gold >= stage.requirements.gold;
+        goldReq.innerHTML = `
+            <i class="fas fa-coins" style="color: ${hasGold ? '#e9c46a' : '#e63946'}"></i>
+            <span>金币 ≥ ${stage.requirements.gold}</span>
+            <span style="margin-left: auto; color: ${hasGold ? '#e9c46a' : '#e63946'}">
+                ${gameState.gold}/${stage.requirements.gold}
+            </span>
+        `;
+        requirementsDiv.appendChild(goldReq);
+        
+        // 更新建造按钮状态
+        const buildBtn = document.getElementById('buildBtn');
+        const buildHint = document.getElementById('buildHint');
+        
+        let canBuild = gameState.actionPoints > 0;
+        let missingRequirements = [];
+        
+        // 检查所有需求
+        for (const [attr, value] of Object.entries(stage.requirements)) {
+            if (attr === 'gold') {
+                if (gameState.gold < value) {
+                    canBuild = false;
+                    missingRequirements.push(`金币(${gameState.gold}/${value})`);
                 }
             } else {
-                this.showScreen('create-character-screen');
-                this.updateRemainingPoints(); // 初始化剩余点数显示
+                if (gameState.player[attr] < value) {
+                    canBuild = false;
+                    const attrNames = {
+                        intelligence: '智力',
+                        strength: '武力',
+                        communication: '交际',
+                        charm: '气质'
+                    };
+                    missingRequirements.push(`${attrNames[attr]}(${gameState.player[attr]}/${value})`);
+                }
             }
-        }, 300);
-    }
-
-    // 屏幕切换
-    showScreen(screenId) {
-        document.querySelectorAll('.screen').forEach(screen => {
-            screen.classList.add('hidden');
-        });
-        
-        const screenElement = document.getElementById(screenId);
-        if (screenElement) {
-            screenElement.classList.remove('hidden');
         }
         
-        // 切换到游戏界面时更新UI
-        if (screenId === 'game-screen' && this.state.player) {
-            this.updateGameUI();
-            this.renderWorkOptions();
-            this.renderCourses();
-            this.updateBuildInterface();
+        if (gameState.buildProgress >= 100) {
+            buildBtn.disabled = true;
+            buildBtn.innerHTML = '<i class="fas fa-check"></i> 建造已完成';
+            buildHint.textContent = '新能源汽车已经建造完成！';
+        } else if (canBuild) {
+            buildBtn.disabled = false;
+            buildHint.textContent = '点击开始建造，每次增加5-10%进度';
+        } else {
+            buildBtn.disabled = true;
+            buildHint.textContent = `无法建造，缺少: ${missingRequirements.join(', ')}`;
         }
+        
+        // 更新车辆部件状态
+        updateVehicleParts();
     }
 
-    // 创建角色
-    createCharacter() {
-        const realName = document.getElementById('realname').value.trim();
-        const codename = document.getElementById('codename').value.trim();
-        const gender = document.getElementById('gender').value;
-        const profession = document.getElementById('profession').value;
-
-        if (!realName || !codename) {
-            this.showMessage('请填写完整信息');
-            return;
-        }
-
-        if (codename.length > 5) {
-            this.showMessage('代号不能超过5个字');
-            return;
-        }
-
-        const stats = {
-            intelligence: parseInt(document.getElementById('intelligence-input').value) || 16,
-            strength: parseInt(document.getElementById('strength-input').value) || 16,
-            social: parseInt(document.getElementById('social-input').value) || 16,
-            charm: parseInt(document.getElementById('charm-input').value) || 16,
-            luck: parseInt(document.getElementById('luck-input').value) || 16
+    // 更新车辆部件状态
+    function updateVehicleParts() {
+        const parts = ['chassis', 'battery', 'motor', 'wheels', 'body'];
+        const partStages = {
+            chassis: 1,  // 底盘制作阶段
+            battery: 2,  // 动力系统阶段
+            motor: 2,    // 动力系统阶段
+            wheels: 1,   // 底盘制作阶段
+            body: 3      // 车身制造阶段
         };
-
-        // 检查总点数
-        const totalPoints = Object.values(stats).reduce((a, b) => a + b, 0);
-        if (totalPoints !== 80) {
-            this.showMessage('属性点总和必须为80点');
-            return;
-        }
-
-        this.state.player = new Player(realName, codename, gender, profession, stats);
-        this.state.playerId = Utils.generateId();
-        this.saveToStorage();
         
-        this.showScreen('intro-screen');
-        this.generateIntroStory();
+        const currentStageIndex = buildStages.findIndex(stage => 
+            gameState.buildProgress >= stage.min && gameState.buildProgress < stage.max
+        );
+        
+        parts.forEach(part => {
+            const partElement = document.getElementById(`part${part.charAt(0).toUpperCase() + part.slice(1)}`);
+            const statusElement = document.getElementById(`part${part.charAt(0).toUpperCase() + part.slice(1)}Status`);
+            
+            if (currentStageIndex >= partStages[part]) {
+                partElement.classList.add('completed');
+                statusElement.textContent = `${part === 'body' ? '车身' : 
+                    part === 'chassis' ? '底盘' : 
+                    part === 'battery' ? '电池' : 
+                    part === 'motor' ? '电机' : '车轮'}: 已完成`;
+                statusElement.classList.add('completed');
+            } else {
+                partElement.classList.remove('completed');
+                statusElement.textContent = `${part === 'body' ? '车身' : 
+                    part === 'chassis' ? '底盘' : 
+                    part === 'battery' ? '电池' : 
+                    part === 'motor' ? '电机' : '车轮'}: 未完成`;
+                statusElement.classList.remove('completed');
+            }
+        });
     }
 
-    // 生成导入剧情
-    async generateIntroStory() {
-        this.showLoading(true, 'AI剧情生成中...');
+    // 更新下一天显示
+    function updateNextDayDisplay() {
+        document.getElementById('nextDayNumber').textContent = gameState.day;
+        document.getElementById('daysRemaining').textContent = 30 - gameState.day;
+        document.getElementById('countdownDays').textContent = 30 - gameState.day;
+        document.getElementById('countdownTotal').textContent = 30 - gameState.day;
+        document.getElementById('nextDayBtnText').textContent = gameState.day + 1;
         
-        try {
-            // 调用AI API生成剧情
-            const response = await fetch(this.API_ENDPOINTS.ai, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    type: 'intro',
-                    player: this.state.player,
-                    background: "锈钴城封锁，资源耗尽，需要建造新能源汽车逃离"
-                })
+        // 更新确认按钮
+        const confirmCheckbox = document.getElementById('confirmNextDay');
+        const nextDayBtn = document.getElementById('nextDayBtn');
+        
+        if (confirmCheckbox && nextDayBtn) {
+            confirmCheckbox.addEventListener('change', function() {
+                nextDayBtn.disabled = !this.checked;
             });
             
-            if (!response.ok) throw new Error('AI请求失败');
-            
-            const data = await response.json();
-            const story = data.response || `在锈钴城封锁的第45天，资源耗尽，希望渺茫。作为${this.state.player.codename}，你面临着生存的考验。\n\n就在这时，TL001系统突然激活："检测到生存意志，系统绑定成功。30天后，城外救援队抵达。建造出完美的新能源汽车，这是你逃离的唯一机会。"`;
-            
-            document.getElementById('intro-text').innerHTML = `<p>${story}</p>`;
-            document.getElementById('begin-escape-btn').classList.remove('hidden');
-        } catch (error) {
-            console.error('AI剧情生成失败:', error);
-            const story = `在锈钴城封锁的第45天，资源耗尽，希望渺茫。作为${this.state.player.codename}，你面临着生存的考验。\n\n就在这时，TL001系统突然激活："检测到生存意志，系统绑定成功。30天后，城外救援队抵达。建造出完美的新能源汽车，这是你逃离的唯一机会。"`;
-            document.getElementById('intro-text').innerHTML = `<p>${story}</p>`;
-            document.getElementById('begin-escape-btn').classList.remove('hidden');
-        } finally {
-            this.showLoading(false);
+            nextDayBtn.disabled = !confirmCheckbox.checked;
         }
     }
 
-    // 开始游戏主界面
-    startGame() {
-        this.showScreen('game-screen');
-        this.updateGameUI();
+    // 更新工作显示
+    function updateWorkDisplay() {
+        const jobList = document.getElementById('jobList');
+        if (!jobList) return;
         
-        if (!this.gameEventsBound) {
-            this.bindGameEvents();
-        }
-    }
-
-    // 更新游戏UI
-    updateGameUI() {
-        if (!this.state.player) return;
-
-        // 更新基本信息
-        document.getElementById('player-codename').textContent = this.state.player.codename;
-        document.getElementById('current-day').textContent = this.state.day;
-        document.getElementById('action-points').textContent = this.state.actions;
-        document.getElementById('gold-amount').textContent = this.state.gold;
-        document.getElementById('build-progress').textContent = this.state.buildProgress;
-        document.getElementById('days-left').textContent = this.state.getDaysLeft(); // 修复NaN问题
-
-        // 更新属性概览
-        document.getElementById('stat-intel').textContent = this.state.player.stats.intelligence;
-        document.getElementById('stat-str').textContent = this.state.player.stats.strength;
-        document.getElementById('stat-soc').textContent = this.state.player.stats.social;
-        document.getElementById('stat-cha').textContent = this.state.player.stats.charm;
-        document.getElementById('stat-luck').textContent = this.state.player.stats.luck;
-
-        // 详细属性面板
-        document.getElementById('detail-intel').textContent = this.state.player.stats.intelligence;
-        document.getElementById('detail-str').textContent = this.state.player.stats.strength;
-        document.getElementById('detail-soc').textContent = this.state.player.stats.social;
-        document.getElementById('detail-cha').textContent = this.state.player.stats.charm;
-        document.getElementById('detail-luck').textContent = this.state.player.stats.luck;
-
-        // 聊天次数
-        document.getElementById('chat-remaining').textContent = 5 - this.state.chatCount;
-
-        // 建造界面更新
-        this.updateBuildInterface();
-
-        // 更新掠夺冷却
-        this.updateRaidCooldown();
-
-        // 保存状态
-        this.saveToStorage();
-    }
-
-    // 职业选择
-    selectProfession(card) {
-        document.querySelectorAll('.profession-card').forEach(c => {
-            c.classList.remove('active');
-        });
-        card.classList.add('active');
-        document.getElementById('profession').value = card.dataset.profession;
-    }
-
-    // 渲染工作选项
-    renderWorkOptions() {
-        const container = document.getElementById('work-options');
-        if (!container) return;
+        jobList.innerHTML = '';
         
-        container.innerHTML = '';
-
-        if (!this.state.player) {
-            container.innerHTML = '<p class="no-data">请先创建角色</p>';
-            return;
-        }
-
-        const availableJobs = JOBS.filter(job => 
-            job.unlockDay <= this.state.day && this.state.checkRequirements(job.requirements)
-        );
-
-        if (availableJobs.length === 0) {
-            container.innerHTML = '<p class="no-data">暂无可用工作</p>';
-            return;
-        }
-
-        availableJobs.forEach(job => {
-            const reward = this.calculateWorkReward(job.baseReward);
-            const jobElement = document.createElement('div');
-            jobElement.className = 'work-option';
-            jobElement.innerHTML = `
+        // 获取当前工作标签
+        const activeTab = document.querySelector('#workTabs .tab-btn.active');
+        if (!activeTab) return;
+        
+        const workType = activeTab.dataset.work;
+        const jobArray = jobs[workType];
+        
+        jobArray.forEach((job, index) => {
+            // 检查是否解锁
+            let unlocked = job.unlock;
+            if (!unlocked) {
+                // 检查是否满足要求
+                let meetsRequirements = true;
+                for (const [attr, value] of Object.entries(job.requirements)) {
+                    if (gameState.player[attr] < value) {
+                        meetsRequirements = false;
+                        break;
+                    }
+                }
+                if (meetsRequirements) {
+                    job.unlock = true;
+                    unlocked = true;
+                }
+            }
+            
+            const jobCard = document.createElement('div');
+            jobCard.className = `job-card ${unlocked ? '' : 'locked'}`;
+            
+            // 计算实际奖励（受幸运影响）
+            let actualReward = job.baseReward;
+            if (gameState.player.luck < 20) {
+                actualReward = Math.floor(actualReward * 0.5);
+            } else if (gameState.player.luck > 80) {
+                actualReward = Math.floor(actualReward * 2);
+            }
+            
+            // 随机波动
+            const fluctuation = Math.floor(Math.random() * 11) - 5; // -5 到 +5
+            actualReward += fluctuation;
+            actualReward = Math.max(5, actualReward); // 最少5金币
+            
+            jobCard.innerHTML = `
                 <h4>${job.name}</h4>
-                <div class="work-details">
-                    <p>${job.description}</p>
-                    <div class="requirements">
-                        ${Object.entries(job.requirements).map(([stat, value]) => 
-                            `<span class="requirement-tag">${stat}: ${value}</span>`
-                        ).join('')}
-                    </div>
+                <p>${job.desc}</p>
+                <div class="job-reward">
+                    <i class="fas fa-coins"></i>
+                    预计收益: ${actualReward} 金币
                 </div>
-                <div class="work-reward">预计收益：${reward}金币</div>
+                <div class="job-requirements">
+                    ${Object.entries(job.requirements).map(([attr, value]) => {
+                        const attrNames = {
+                            intelligence: '智力',
+                            strength: '武力',
+                            communication: '交际',
+                            charm: '气质'
+                        };
+                        const hasRequirement = gameState.player[attr] >= value;
+                        return `<span class="req" style="background: ${hasRequirement ? 'rgba(42, 157, 143, 0.2)' : 'rgba(231, 111, 81, 0.2)'}">
+                            ${attrNames[attr]}: ${value}
+                        </span>`;
+                    }).join(' ')}
+                </div>
+                <button class="btn-action" onclick="window.startWork('${workType}', ${index})" 
+                    ${!unlocked || gameState.actionPoints === 0 ? 'disabled' : ''}>
+                    <i class="fas fa-hammer"></i> 开始工作
+                </button>
             `;
-            jobElement.addEventListener('click', () => this.startWork(job));
-            container.appendChild(jobElement);
+            
+            jobList.appendChild(jobCard);
         });
     }
 
     // 开始工作
-    startWork(job) {
-        if (this.state.actions <= 0) {
-            this.showMessage('没有行动点了');
+    window.startWork = function(workType, jobIndex) {
+        if (gameState.actionPoints === 0) {
+            showNotification('没有行动点了！', 'warning');
             return;
         }
-
-        if (this.state.workQuizActive) {
-            this.showMessage('请先完成当前工作测试');
-            return;
-        }
-
-        this.state.currentJob = job;
-        this.state.workQuizActive = true;
         
-        // 随机选择一个问题
-        const questions = QUESTIONS.work || [];
-        if (questions.length > 0) {
-            const randomQuestion = questions[Math.floor(Math.random() * questions.length)];
-            this.state.quizQuestions = [randomQuestion];
-            this.state.currentQuestion = 0;
-            this.state.correctAnswers = 0;
-            
-            this.showWorkQuestion();
-        } else {
-            // 如果没有题目，直接完成工作
-            this.completeWork(true);
-        }
-    }
-
-    // 显示工作问题
-    showWorkQuestion() {
-        const quizContainer = document.getElementById('work-quiz');
-        const optionsContainer = document.getElementById('work-options');
+        const job = jobs[workType][jobIndex];
         
-        if (quizContainer && optionsContainer) {
-            quizContainer.classList.remove('hidden');
-            optionsContainer.classList.add('hidden');
+        // 消耗行动点
+        gameState.actionPoints--;
+        gameState.actionsToday++;
+        
+        // 计算奖励
+        let actualReward = job.baseReward;
+        if (gameState.player.luck < 20) {
+            actualReward = Math.floor(actualReward * 0.5);
+        } else if (gameState.player.luck > 80) {
+            actualReward = Math.floor(actualReward * 2);
         }
+        
+        // 随机波动
+        const fluctuation = Math.floor(Math.random() * 11) - 5;
+        actualReward += fluctuation;
+        actualReward = Math.max(5, actualReward);
+        
+        // 显示答题模态框
+        showWorkQuiz(workType, job, actualReward);
+    };
 
-        const question = this.state.quizQuestions[this.state.currentQuestion];
-        if (!question) return;
-
-        document.getElementById('quiz-question').textContent = question.question;
-        const optionsElement = document.getElementById('quiz-options');
-        if (optionsElement) {
-            optionsElement.innerHTML = '';
+    // 显示工作答题
+    function showWorkQuiz(workType, job, baseReward) {
+        // 从题库中随机选择一道题
+        const courseTypes = Object.keys(questionBank);
+        const randomCourse = courseTypes[Math.floor(Math.random() * courseTypes.length)];
+        const questions = questionBank[randomCourse];
+        const randomQuestion = questions[Math.floor(Math.random() * questions.length)];
+        
+        const modal = document.getElementById('quizModal');
+        const quizTitle = document.getElementById('quizTitle');
+        const quizQuestion = document.getElementById('quizQuestion');
+        const quizOptions = document.getElementById('quizOptions');
+        const submitBtn = document.getElementById('submitAnswerBtn');
+        
+        quizTitle.textContent = `工作挑战 - ${job.name}`;
+        quizQuestion.textContent = randomQuestion.question;
+        
+        // 清空选项
+        quizOptions.innerHTML = '';
+        
+        // 添加选项
+        randomQuestion.options.forEach((option, index) => {
+            const optionBtn = document.createElement('button');
+            optionBtn.className = 'quiz-option';
+            optionBtn.textContent = option;
+            optionBtn.dataset.index = index;
             
-            question.options.forEach((option, index) => {
-                const optionElement = document.createElement('div');
-                optionElement.className = 'quiz-option';
-                optionElement.textContent = option;
-                optionElement.addEventListener('click', () => {
-                    document.querySelectorAll('.quiz-option').forEach(o => o.classList.remove('selected'));
-                    optionElement.classList.add('selected');
-                    this.selectedAnswer = index;
+            optionBtn.addEventListener('click', function() {
+                // 移除之前的选择
+                document.querySelectorAll('.quiz-option').forEach(opt => {
+                    opt.classList.remove('selected');
                 });
-                optionsElement.appendChild(optionElement);
+                
+                // 标记当前选择
+                this.classList.add('selected');
+                submitBtn.disabled = false;
             });
-        }
-    }
-
-    // 提交工作测试
-    submitWorkQuiz() {
-        if (typeof this.selectedAnswer === 'undefined') {
-            this.showMessage('请选择一个答案');
-            return;
-        }
-
-        const question = this.state.quizQuestions[this.state.currentQuestion];
-        const isCorrect = this.selectedAnswer === question.answer;
+            
+            quizOptions.appendChild(optionBtn);
+        });
         
-        if (isCorrect) {
-            this.state.correctAnswers++;
-        }
-
-        this.completeWork(isCorrect);
-    }
-
-    // 完成工作
-    completeWork(isCorrect) {
-        const job = this.state.currentJob;
-        let reward = this.calculateWorkReward(job.baseReward);
+        // 设置提交按钮
+        submitBtn.onclick = function() {
+            const selectedOption = document.querySelector('.quiz-option.selected');
+            if (!selectedOption) return;
+            
+            const selectedIndex = parseInt(selectedOption.dataset.index);
+            const isCorrect = selectedIndex === randomQuestion.answer;
+            
+            // 显示结果
+            document.querySelectorAll('.quiz-option').forEach((opt, idx) => {
+                opt.classList.remove('selected');
+                if (idx === randomQuestion.answer) {
+                    opt.classList.add('correct');
+                } else if (idx === selectedIndex && !isCorrect) {
+                    opt.classList.add('incorrect');
+                }
+                opt.disabled = true;
+            });
+            
+            submitBtn.disabled = true;
+            
+            // 计算最终奖励
+            let finalReward = isCorrect ? baseReward * 2 : baseReward;
+            gameState.gold += finalReward;
+            
+            // 显示结果并关闭模态框
+            setTimeout(() => {
+                modal.style.display = 'none';
+                updateGameDisplay();
+                
+                const resultMessage = isCorrect 
+                    ? `工作完成！回答正确，获得双倍奖励 ${finalReward} 金币！`
+                    : `工作完成！回答错误，获得 ${finalReward} 金币。`;
+                
+                showNotification(resultMessage, isCorrect ? 'success' : 'info');
+                addToDailyLog(`${isCorrect ? '✓' : '✗'} ${job.name}: ${resultMessage}`);
+                
+                // 保存游戏进度
+                saveGame();
+            }, 2000);
+        };
         
-        if (isCorrect) {
-            reward *= 2; // 答对收益翻倍
-            this.showMessage(`工作完成！回答正确，获得${reward}金币`);
-        } else {
-            this.showMessage(`工作完成！回答错误，获得基础收益${reward}金币`);
-        }
+        // 显示模态框
+        modal.style.display = 'flex';
+        submitBtn.disabled = true;
+    };
 
-        this.state.gold += reward;
-        this.state.actions--;
-        this.state.workQuizActive = false;
-        this.state.currentJob = null;
-        this.selectedAnswer = undefined;
+    // 更新学习显示
+    function updateStudyDisplay() {
+        const courseList = document.getElementById('courseList');
+        if (!courseList) return;
         
-        // 恢复界面
-        const quizContainer = document.getElementById('work-quiz');
-        const optionsContainer = document.getElementById('work-options');
+        courseList.innerHTML = '';
         
-        if (quizContainer && optionsContainer) {
-            quizContainer.classList.add('hidden');
-            optionsContainer.classList.remove('hidden');
-        }
+        // 获取当前学习标签
+        const activeTab = document.querySelector('#studyTabs .tab-btn.active');
+        if (!activeTab) return;
         
-        this.updateGameUI();
-        this.renderWorkOptions();
-    }
-
-    // 计算工作收益
-    calculateWorkReward(baseReward) {
-        let reward = baseReward;
-        const luckMultiplier = Utils.getLuckMultiplier(this.state.player.stats.luck);
-        reward = Math.round(reward * luckMultiplier);
-        return reward;
-    }
-
-    // 渲染课程
-    renderCourses() {
-        const container = document.getElementById('course-grid');
-        if (!container) return;
+        const courseType = activeTab.dataset.course;
+        const courseArray = courses[courseType];
         
-        container.innerHTML = '';
-
-        if (!this.state.player) {
-            container.innerHTML = '<p class="no-data">请先创建角色</p>';
-            return;
-        }
-
-        const availableCourses = COURSES.filter(course => 
-            this.state.checkRequirements(course.requirements)
-        );
-
-        if (availableCourses.length === 0) {
-            container.innerHTML = '<p class="no-data">暂无可用课程</p>';
-            return;
-        }
-
-        availableCourses.forEach(course => {
-            const courseElement = document.createElement('div');
-            courseElement.className = 'course-card';
-            courseElement.innerHTML = `
-                <i class="fas fa-book"></i>
+        courseArray.forEach((course, index) => {
+            // 检查是否解锁
+            let unlocked = course.unlock;
+            if (!unlocked) {
+                // 基础课程总是解锁的
+                if (courseType === 'basic' && index === 0) {
+                    course.unlock = true;
+                    unlocked = true;
+                }
+                // 其他课程根据属性解锁
+                else {
+                    const attrRequirement = {
+                        engineering: { intelligence: 20 },
+                        business: { communication: 15 }
+                    };
+                    
+                    if (attrRequirement[courseType]) {
+                        const [attr, value] = Object.entries(attrRequirement[courseType])[0];
+                        if (gameState.player[attr] >= value) {
+                            course.unlock = true;
+                            unlocked = true;
+                        }
+                    }
+                }
+            }
+            
+            const courseCard = document.createElement('div');
+            courseCard.className = `course-card ${unlocked ? '' : 'locked'}`;
+            
+            // 计算可能的属性收益（受幸运影响）
+            const mainAttrName = {
+                intelligence: '智力',
+                strength: '武力',
+                communication: '交际',
+                charm: '气质',
+                luck: '幸运'
+            };
+            
+            const secAttrName = mainAttrName[course.secAttr];
+            
+            courseCard.innerHTML = `
                 <h4>${course.name}</h4>
-                <p>${course.description}</p>
-                <div class="course-requirements">
-                    需求：${Object.entries(course.requirements).map(([stat, value]) => 
-                        `${stat}: ${value}`
-                    ).join(', ')}
+                <p>${course.desc}</p>
+                <div class="course-effects">
+                    <i class="fas fa-chart-line"></i>
+                    主要提升: ${mainAttrName[course.mainAttr]}，次要提升: ${secAttrName}
                 </div>
-                <div class="course-benefits">
-                    主要提升：${course.mainAttribute}，次要提升：${course.secondaryAttribute}
-                </div>
+                <button class="btn-action" onclick="window.startStudy('${courseType}', ${index})" 
+                    ${!unlocked || gameState.actionPoints === 0 ? 'disabled' : ''}>
+                    <i class="fas fa-book-open"></i> 开始学习 (${course.questions}题)
+                </button>
             `;
-            courseElement.addEventListener('click', () => this.startStudy(course));
-            container.appendChild(courseElement);
+            
+            courseList.appendChild(courseCard);
         });
     }
 
     // 开始学习
-    startStudy(course) {
-        if (this.state.actions <= 0) {
-            this.showMessage('没有行动点了');
+    window.startStudy = function(courseType, courseIndex) {
+        if (gameState.actionPoints === 0) {
+            showNotification('没有行动点了！', 'warning');
             return;
         }
+        
+        const course = courses[courseType][courseIndex];
+        
+        // 消耗行动点
+        gameState.actionPoints--;
+        gameState.actionsToday++;
+        
+        // 开始学习（显示答题界面）
+        startStudyQuiz(courseType, course);
+    };
 
-        if (this.state.studyQuizActive) {
-            this.showMessage('请先完成当前课程测试');
-            return;
+    // 开始学习答题
+    function startStudyQuiz(courseType, course) {
+        // 获取题目
+        const questions = questionBank[courseType] || questionBank.basic;
+        
+        // 如果题目不足，复制现有题目
+        let quizQuestions = [];
+        while (quizQuestions.length < course.questions) {
+            quizQuestions = quizQuestions.concat(questions);
         }
-
-        this.state.currentCourse = course;
-        this.state.studyQuizActive = true;
-        this.state.quizQuestions = this.generateStudyQuestions(20); // 生成20道题
-        this.state.currentQuestion = 0;
-        this.state.correctAnswers = 0;
+        quizQuestions = quizQuestions.slice(0, course.questions);
         
-        this.showStudyQuestion();
-    }
-
-    // 生成学习题目
-    generateStudyQuestions(count) {
-        const questions = QUESTIONS.study || [];
-        const result = [];
+        // 打乱题目顺序
+        quizQuestions.sort(() => Math.random() - 0.5);
         
-        for (let i = 0; i < count; i++) {
-            if (questions.length > 0) {
-                result.push(questions[i % questions.length]);
-            } else {
-                // 如果题库为空，生成默认题目
-                result.push({
-                    question: `学习问题 ${i + 1}`,
-                    options: ['选项A', '选项B', '选项C', '选项D'],
-                    answer: i % 4
-                });
+        let currentQuestionIndex = 0;
+        let correctAnswers = 0;
+        
+        // 显示第一题
+        showNextStudyQuestion();
+        
+        function showNextStudyQuestion() {
+            if (currentQuestionIndex >= quizQuestions.length) {
+                // 学习完成
+                finishStudy(course, correctAnswers, quizQuestions.length);
+                return;
             }
-        }
-        
-        return result;
-    }
-
-    // 显示学习问题
-    showStudyQuestion() {
-        const quizContainer = document.getElementById('study-quiz');
-        const courseSelection = document.querySelector('.course-selection');
-        
-        if (quizContainer && courseSelection) {
-            quizContainer.classList.remove('hidden');
-            courseSelection.classList.add('hidden');
-        }
-
-        document.getElementById('quiz-current').textContent = this.state.currentQuestion + 1;
-        
-        const question = this.state.quizQuestions[this.state.currentQuestion];
-        if (!question) return;
-
-        document.getElementById('study-question').textContent = question.question;
-        const optionsElement = document.getElementById('study-options');
-        if (optionsElement) {
-            optionsElement.innerHTML = '';
             
+            const question = quizQuestions[currentQuestionIndex];
+            const modal = document.getElementById('quizModal');
+            const quizTitle = document.getElementById('quizTitle');
+            const currentQuestionSpan = document.getElementById('currentQuestion');
+            const totalQuestionsSpan = document.getElementById('totalQuestions');
+            const quizQuestion = document.getElementById('quizQuestion');
+            const quizOptions = document.getElementById('quizOptions');
+            const submitBtn = document.getElementById('submitAnswerBtn');
+            
+            quizTitle.textContent = `学习 - ${course.name}`;
+            currentQuestionSpan.textContent = currentQuestionIndex + 1;
+            totalQuestionsSpan.textContent = quizQuestions.length;
+            quizQuestion.textContent = question.question;
+            
+            // 清空选项
+            quizOptions.innerHTML = '';
+            
+            // 添加选项
             question.options.forEach((option, index) => {
-                const optionElement = document.createElement('div');
-                optionElement.className = 'quiz-option';
-                optionElement.textContent = option;
-                optionElement.addEventListener('click', () => {
-                    document.querySelectorAll('.quiz-option').forEach(o => o.classList.remove('selected'));
-                    optionElement.classList.add('selected');
-                    this.selectedStudyAnswer = index;
+                const optionBtn = document.createElement('button');
+                optionBtn.className = 'quiz-option';
+                optionBtn.textContent = option;
+                optionBtn.dataset.index = index;
+                
+                optionBtn.addEventListener('click', function() {
+                    // 移除之前的选择
+                    document.querySelectorAll('.quiz-option').forEach(opt => {
+                        opt.classList.remove('selected');
+                    });
+                    
+                    // 标记当前选择
+                    this.classList.add('selected');
+                    submitBtn.disabled = false;
                 });
-                optionsElement.appendChild(optionElement);
+                
+                quizOptions.appendChild(optionBtn);
             });
-        }
-    }
-
-    // 提交学习测试
-    submitStudyQuiz() {
-        if (typeof this.selectedStudyAnswer === 'undefined') {
-            this.showMessage('请选择一个答案');
-            return;
-        }
-
-        const question = this.state.quizQuestions[this.state.currentQuestion];
-        const isCorrect = this.selectedStudyAnswer === question.answer;
-        
-        if (isCorrect) {
-            this.state.correctAnswers++;
-        }
-
-        this.state.currentQuestion++;
-        
-        if (this.state.currentQuestion >= this.state.quizQuestions.length) {
-            this.completeStudy();
-        } else {
-            this.selectedStudyAnswer = undefined;
-            this.showStudyQuestion();
+            
+            // 设置提交按钮
+            submitBtn.onclick = function() {
+                const selectedOption = document.querySelector('.quiz-option.selected');
+                if (!selectedOption) return;
+                
+                const selectedIndex = parseInt(selectedOption.dataset.index);
+                const isCorrect = selectedIndex === question.answer;
+                
+                // 显示结果
+                document.querySelectorAll('.quiz-option').forEach((opt, idx) => {
+                    opt.classList.remove('selected');
+                    if (idx === question.answer) {
+                        opt.classList.add('correct');
+                    } else if (idx === selectedIndex && !isCorrect) {
+                        opt.classList.add('incorrect');
+                    }
+                    opt.disabled = true;
+                });
+                
+                submitBtn.disabled = true;
+                
+                // 记录正确答案
+                if (isCorrect) {
+                    correctAnswers++;
+                }
+                
+                // 显示下一题
+                setTimeout(() => {
+                    currentQuestionIndex++;
+                    showNextStudyQuestion();
+                }, 1500);
+            };
+            
+            // 显示模态框
+            modal.style.display = 'flex';
+            submitBtn.disabled = true;
         }
     }
 
     // 完成学习
-    completeStudy() {
-        const course = this.state.currentCourse;
-        const totalQuestions = this.state.quizQuestions.length;
-        const correctRate = this.state.correctAnswers / totalQuestions;
+    function finishStudy(course, correctAnswers, totalQuestions) {
+        const modal = document.getElementById('quizModal');
+        modal.style.display = 'none';
         
-        // 计算属性增长（基于正确率）
-        let mainGain = Math.round(course.baseGain * correctRate);
-        let secondaryGain = Math.round(course.baseGain * correctRate * 0.5);
+        // 计算正确率
+        const accuracy = correctAnswers / totalQuestions;
         
-        // 应用职业加成
-        mainGain = this.state.player.applyProfessionBonus(course.mainAttribute, mainGain);
-        secondaryGain = this.state.player.applyProfessionBonus(course.secondaryAttribute, secondaryGain);
+        // 计算属性提升（基础提升 + 正确率加成）
+        let baseGain = 2;
+        let accuracyBonus = Math.floor(accuracy * 5); // 0-5点额外奖励
+        
+        // 职业加成
+        const professionMultiplier = professions[gameState.player.profession].multiplier;
+        if (professionMultiplier[course.mainAttr]) {
+            baseGain *= professionMultiplier[course.mainAttr];
+            accuracyBonus *= professionMultiplier[course.mainAttr];
+        }
         
         // 幸运影响
-        const luckMultiplier = Utils.getLuckMultiplier(this.state.player.stats.luck);
-        mainGain = Math.round(mainGain * luckMultiplier);
-        secondaryGain = Math.round(secondaryGain * luckMultiplier);
-        
-        // 增长属性
-        this.state.player.stats[course.mainAttribute] += mainGain;
-        this.state.player.stats[course.secondaryAttribute] += secondaryGain;
-        
-        this.state.actions--;
-        this.state.studyQuizActive = false;
-        this.state.currentCourse = null;
-        this.selectedStudyAnswer = undefined;
-        
-        // 显示学习结果
-        this.showStudyResults(course, mainGain, secondaryGain, correctRate);
-    }
-
-    // 显示学习结果
-    showStudyResults(course, mainGain, secondaryGain, correctRate) {
-        const resultsContainer = document.getElementById('study-results');
-        const quizContainer = document.getElementById('study-quiz');
-        
-        if (resultsContainer && quizContainer) {
-            quizContainer.classList.add('hidden');
-            resultsContainer.classList.remove('hidden');
-        }
-
-        const resultsContent = document.getElementById('results-content');
-        if (resultsContent) {
-            resultsContent.innerHTML = `
-                <p>课程：${course.name}</p>
-                <p>正确率：${Math.round(correctRate * 100)}% (${this.state.correctAnswers}/20)</p>
-                <p>${course.mainAttribute} +${mainGain}</p>
-                <p>${course.secondaryAttribute} +${secondaryGain}</p>
-                <p>行动点 -1</p>
-            `;
-        }
-    }
-
-    // 关闭学习结果
-    closeStudyResults() {
-        const resultsContainer = document.getElementById('study-results');
-        const courseSelection = document.querySelector('.course-selection');
-        
-        if (resultsContainer && courseSelection) {
-            resultsContainer.classList.add('hidden');
-            courseSelection.classList.remove('hidden');
+        let luckMultiplier = 1;
+        if (gameState.player.luck < 20) {
+            luckMultiplier = 0.5;
+        } else if (gameState.player.luck > 80) {
+            luckMultiplier = 2;
         }
         
-        this.updateGameUI();
-        this.renderCourses();
-    }
-
-    // 更新建造界面
-    updateBuildInterface() {
-        if (!this.state.player) return;
+        const mainGain = Math.floor((baseGain + accuracyBonus) * luckMultiplier);
+        const secGain = Math.floor((baseGain / 2) * luckMultiplier);
         
-        const stage = this.state.getCurrentBuildStage();
+        // 应用属性提升
+        gameState.player[course.mainAttr] += mainGain;
+        gameState.player[course.secAttr] += secGain;
         
-        // 更新需求显示
-        document.getElementById('req-intelligence').textContent = stage.requirements.intelligence || 0;
-        document.getElementById('req-strength').textContent = stage.requirements.strength || 0;
-        document.getElementById('req-social').textContent = stage.requirements.social || 0;
-        document.getElementById('req-charm').textContent = stage.requirements.charm || 0;
-        document.getElementById('req-gold').textContent = stage.requirements.gold || 0;
-        
-        // 更新状态
-        document.getElementById('intel-status').textContent = 
-            this.state.player.stats.intelligence >= (stage.requirements.intelligence || 0) ? '✓ 已满足' : '✗ 不足';
-        document.getElementById('str-status').textContent = 
-            this.state.player.stats.strength >= (stage.requirements.strength || 0) ? '✓ 已满足' : '✗ 不足';
-        document.getElementById('soc-status').textContent = 
-            this.state.player.stats.social >= (stage.requirements.social || 0) ? '✓ 已满足' : '✗ 不足';
-        document.getElementById('cha-status').textContent = 
-            this.state.player.stats.charm >= (stage.requirements.charm || 0) ? '✓ 已满足' : '✗ 不足';
-        document.getElementById('gold-status').textContent = 
-            this.state.gold >= (stage.requirements.gold || 0) ? '✓ 已满足' : '✗ 不足';
-        
-        // 更新进度条和部件
-        document.getElementById('build-progress-fill').style.width = `${this.state.buildProgress}%`;
-        document.getElementById('build-percentage').textContent = this.state.buildProgress;
-        
-        // 更新车辆部件状态
-        BUILD_STAGES.forEach(partStage => {
-            const partElement = document.getElementById(`part-${partStage.name.replace('系统', '').replace('框架', '').replace('外壳', '').toLowerCase()}`);
-            if (partElement) {
-                if (this.state.buildProgress >= partStage.progress) {
-                    partElement.classList.add('completed');
-                } else {
-                    partElement.classList.remove('completed');
-                }
-            }
-        });
-        
-        // 检查建造按钮
-        const canBuild = this.state.checkRequirements(stage.requirements) &&
-                        this.state.gold >= (stage.requirements.gold || 0) &&
-                        this.state.actions > 0;
-        
-        const buildBtn = document.getElementById('build-btn');
-        if (buildBtn) {
-            buildBtn.disabled = !canBuild;
-        }
-    }
-
-    // 建造汽车
-    buildCar() {
-        if (this.state.actions <= 0) {
-            this.showMessage('没有行动点了');
-            return;
-        }
-
-        const stage = this.state.getCurrentBuildStage();
-        
-        if (!this.state.checkRequirements(stage.requirements)) {
-            this.showMessage('不满足建造需求');
-            return;
-        }
-        
-        if (this.state.gold < stage.requirements.gold) {
-            this.showMessage('金币不足');
-            return;
-        }
-        
-        // 消耗资源
-        this.state.gold -= stage.requirements.gold;
-        this.state.actions--;
-        
-        // 增加进度（5-10%）
-        const progressIncrease = 5 + Math.floor(Math.random() * 6);
-        this.state.buildProgress = Math.min(100, this.state.buildProgress + progressIncrease);
+        // 属性上限
+        gameState.player[course.mainAttr] = Math.min(gameState.player[course.mainAttr], 100);
+        gameState.player[course.secAttr] = Math.min(gameState.player[course.secAttr], 100);
         
         // 显示结果
-        const resultElement = document.getElementById('build-result');
-        if (resultElement) {
-            resultElement.textContent = `${stage.name}建造完成！进度增加${progressIncrease}%`;
-            resultElement.style.color = 'var(--success-color)';
-        }
+        const mainAttrName = {
+            intelligence: '智力',
+            strength: '武力',
+            communication: '交际',
+            charm: '气质',
+            luck: '幸运'
+        };
         
-        // 检查是否完成
-        if (this.state.buildProgress >= 100) {
-            setTimeout(() => this.checkEnding(), 1000);
-        }
+        const resultMessage = `学习完成！正确率: ${Math.floor(accuracy * 100)}%。${mainAttrName[course.mainAttr]} +${mainGain}，${mainAttrName[course.secAttr]} +${secGain}`;
         
-        this.updateGameUI();
+        showNotification(resultMessage, 'success');
+        addToDailyLog(`📚 ${course.name}: ${resultMessage}`);
+        
+        // 更新显示
+        updateGameDisplay();
+        
+        // 保存游戏进度
+        saveGame();
     }
 
-    // 切换游戏界面
-    switchSection(button) {
-        const section = button.dataset.section;
+    // 切换到下一天
+    async function nextDay() {
+        // 重置行动点
+        gameState.actionPoints = 5;
+        gameState.day++;
+        gameState.actionsToday = 0;
+        gameState.raidUsed = false;
+        gameState.chatLimit = 5;
         
-        if (section === 'next-day') {
-            this.nextDay();
+        // 清空每日日志（保留历史记录）
+        gameState.dailyLog = [];
+        
+        // 检查是否到达30天
+        if (gameState.day > 30) {
+            endGame();
             return;
         }
         
-        if (section === 'restart') {
-            this.confirmRestart();
-            return;
-        }
+        // 显示通知
+        showNotification(`第 ${gameState.day} 天开始！行动点已重置。`, 'info');
         
-        // 更新导航按钮状态
-        document.querySelectorAll('.nav-btn').forEach(btn => {
-            btn.classList.remove('active');
-        });
-        button.classList.add('active');
+        // 更新显示
+        updateGameDisplay();
         
-        // 显示对应内容区域
-        document.querySelectorAll('.content-section').forEach(section => {
-            section.classList.remove('active');
-        });
-        const sectionElement = document.getElementById(`${section}-section`);
-        if (sectionElement) {
-            sectionElement.classList.add('active');
-        }
-        
-        // 特殊处理
-        if (section === 'leaderboard') {
-            this.updateLeaderboards();
-        } else if (section === 'raid') {
-            this.updateRaidTargets();
-        }
+        // 保存游戏进度
+        await saveGame();
     }
 
-    // 进入下一天
-    nextDay() {
-        if (this.state.actions > 0) {
-            this.showMessage('还有行动点没有使用');
-            return;
-        }
+    // 结束游戏
+    async function endGame() {
+        // 判断结局
+        const isSuccess = gameState.buildProgress >= 100;
         
-        this.state.day++;
-        this.state.actions = 5;
-        this.state.chatCount = 0;
+        // 切换到结局界面
+        document.querySelectorAll('.screen').forEach(screen => {
+            screen.classList.remove('active');
+        });
+        document.getElementById('screenEnding').classList.add('active');
         
-        if (this.state.day > this.state.maxDays) {
-            this.checkEnding();
+        // 设置结局标题
+        const endingTitle = document.getElementById('endingTitle');
+        const endingSubtitle = document.getElementById('endingSubtitle');
+        const endingText = document.getElementById('endingText');
+        const endingStats = document.getElementById('endingStats');
+        
+        if (isSuccess) {
+            endingTitle.textContent = '成功逃离！';
+            endingSubtitle.textContent = '第30天，你驾驶着新能源汽车冲出了锈钴城！';
+            endingText.innerHTML = `
+                <p>经过30天的艰苦努力，你终于完成了新能源汽车的建造。在第30天的黎明，你驾驶着这辆凝聚了所有心血和智慧的车辆，冲破了锈钴城的封锁线。</p>
+                <p>外面的世界虽然依然充满未知，但至少你获得了自由。TL001系统在你离开时说道："恭喜你，你证明了人类的坚韧和智慧。记住这段经历，它将成为你未来道路上最宝贵的财富。"</p>
+                <p>你的名字将被记录在荣誉榜上，成为锈钴城历史上少数成功逃离的传奇之一。</p>
+            `;
         } else {
-            this.updateGameUI();
-            this.showMessage(`第${this.state.day}天开始`);
+            endingTitle.textContent = '被困锈钴城';
+            endingSubtitle.textContent = '第30天，你的建造计划未能完成...';
+            endingText.innerHTML = `
+                <p>30天的期限已到，你的新能源汽车建造进度停留在${gameState.buildProgress}%。随着最后期限的到来，锈钴城的资源彻底耗尽。</p>
+                <p>TL001系统在你面前逐渐消失："很遗憾，你的逃离计划失败了。但请不要放弃希望，人类的智慧总会找到新的出路..."</p>
+                <p>你留在了锈钴城，与其他幸存者一起，继续寻找着逃离这座绝望之城的其他方法。</p>
+            `;
+        }
+        
+        // 显示统计数据
+        endingStats.innerHTML = `
+            <div class="stat-item">
+                <div class="stat-label">游戏天数</div>
+                <div class="stat-value">${gameState.day - 1}</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">建造进度</div>
+                <div class="stat-value">${gameState.buildProgress}%</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">获得金币</div>
+                <div class="stat-value">${gameState.gold}</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">最终智力</div>
+                <div class="stat-value">${gameState.player.intelligence}</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">最终武力</div>
+                <div class="stat-value">${gameState.player.strength}</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">最终交际</div>
+                <div class="stat-value">${gameState.player.communication}</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">最终气质</div>
+                <div class="stat-value">${gameState.player.charm}</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">最终幸运</div>
+                <div class="stat-value">${gameState.player.luck}</div>
+            </div>
+        `;
+        
+        // 如果成功，保存到荣誉榜
+        if (isSuccess) {
+            await saveToHonor();
+        }
+        
+        // 重置游戏状态
+        resetGameState();
+    }
+
+    // 保存到荣誉榜
+    async function saveToHonor() {
+        const honorData = {
+            playerId: gameState.playerId,
+            playerName: gameState.player.name,
+            playerCode: gameState.player.code,
+            profession: gameState.player.profession,
+            buildProgress: gameState.buildProgress,
+            gold: gameState.gold,
+            attributes: {
+                intelligence: gameState.player.intelligence,
+                strength: gameState.player.strength,
+                communication: gameState.player.communication,
+                charm: gameState.player.charm,
+                luck: gameState.player.luck
+            },
+            day: gameState.day,
+            escapedAt: new Date().toISOString()
+        };
+        
+        // 尝试保存到Cloudflare KV
+        try {
+            await API.honor.add(honorData);
+            console.log('成功保存到荣誉榜');
+        } catch (error) {
+            console.warn('无法保存到云端荣誉榜，使用本地存储:', error);
+            // 回退到localStorage
+            const honorList = JSON.parse(localStorage.getItem('escapeRustCity_honor') || '[]');
+            honorList.push(honorData);
+            localStorage.setItem('escapeRustCity_honor', JSON.stringify(honorList));
         }
     }
 
-    // 聊天系统
-    async sendChat() {
-        const input = document.getElementById('chat-input');
-        const message = input ? input.value.trim() : '';
+    // 重置游戏状态
+    function resetGameState() {
+        gameState.player = null;
+        gameState.playerId = null;
+        gameState.day = 1;
+        gameState.actionPoints = 5;
+        gameState.gold = 0;
+        gameState.buildProgress = 0;
+        gameState.dailyLog = [];
+        gameState.chatHistory = [];
+        gameState.chatLimit = 5;
+        gameState.raidUsed = false;
+        gameState.raidTarget = null;
+        gameState.gameStarted = false;
+        gameState.actionsToday = 0;
+    }
+
+    // 保存游戏进度
+    async function saveGame() {
+        if (!gameState.player || !gameState.playerId) return;
+        
+        const saveData = {
+            id: gameState.playerId,
+            name: gameState.player.name,
+            code: gameState.player.code,
+            gender: gameState.player.gender,
+            profession: gameState.player.profession,
+            intelligence: gameState.player.intelligence,
+            strength: gameState.player.strength,
+            communication: gameState.player.communication,
+            charm: gameState.player.charm,
+            luck: gameState.player.luck,
+            day: gameState.day,
+            actionPoints: gameState.actionPoints,
+            gold: gameState.gold,
+            buildProgress: gameState.buildProgress,
+            chatHistory: gameState.chatHistory,
+            chatLimit: gameState.chatLimit,
+            raidUsed: gameState.raidUsed,
+            gameStarted: gameState.gameStarted,
+            actionsToday: gameState.actionsToday,
+            lastActive: new Date().toISOString(),
+            saveTime: new Date().toISOString()
+        };
+        
+        // 同时保存到localStorage（离线支持）
+        localStorage.setItem('escapeRustCity_save', JSON.stringify(saveData));
+        
+        // 尝试保存到Cloudflare KV
+        try {
+            await API.players.update(gameState.playerId, saveData);
+            console.log('游戏进度已保存到云端');
+        } catch (error) {
+            console.warn('无法保存到云端，使用本地存储:', error);
+        }
+    }
+
+    // 加载游戏进度
+    async function loadGame() {
+        // 先尝试从localStorage加载
+        const localSave = localStorage.getItem('escapeRustCity_save');
+        if (!localSave) {
+            return false;
+        }
+        
+        const saveData = JSON.parse(localSave);
+        
+        // 恢复游戏状态
+        gameState.player = {
+            name: saveData.name,
+            code: saveData.code,
+            gender: saveData.gender,
+            profession: saveData.profession,
+            intelligence: saveData.intelligence,
+            strength: saveData.strength,
+            communication: saveData.communication,
+            charm: saveData.charm,
+            luck: saveData.luck
+        };
+        
+        gameState.playerId = saveData.id || generatePlayerId(gameState.player);
+        gameState.day = saveData.day || 1;
+        gameState.actionPoints = saveData.actionPoints || 5;
+        gameState.gold = saveData.gold || 0;
+        gameState.buildProgress = saveData.buildProgress || 0;
+        gameState.chatHistory = saveData.chatHistory || [];
+        gameState.chatLimit = saveData.chatLimit || 5;
+        gameState.raidUsed = saveData.raidUsed || false;
+        gameState.gameStarted = saveData.gameStarted || false;
+        gameState.actionsToday = saveData.actionsToday || 0;
+        
+        // 更新显示
+        updateGameDisplay();
+        updateChatDisplay();
+        
+        return true;
+    }
+
+    // 更新聊天显示
+    function updateChatDisplay() {
+        const chatMessages = document.getElementById('chatMessages');
+        const chatCount = document.getElementById('chatCount');
+        
+        if (!chatMessages) return;
+        
+        // 清空现有消息（除了第一条系统消息）
+        while (chatMessages.children.length > 1) {
+            chatMessages.removeChild(chatMessages.lastChild);
+        }
+        
+        // 添加历史消息
+        gameState.chatHistory.forEach(msg => {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${msg.sender}`;
+            
+            const senderDiv = document.createElement('div');
+            senderDiv.className = 'message-sender';
+            senderDiv.textContent = msg.sender === 'player' ? gameState.player.code : 'TL001系统';
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.textContent = msg.content;
+            
+            messageDiv.appendChild(senderDiv);
+            messageDiv.appendChild(contentDiv);
+            
+            chatMessages.appendChild(messageDiv);
+        });
+        
+        // 更新消息计数
+        chatCount.textContent = gameState.chatHistory.length + 1;
+        
+        // 滚动到底部
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    // 发送聊天消息
+    async function sendChatMessage() {
+        const chatInput = document.getElementById('chatInput');
+        const message = chatInput.value.trim();
         
         if (!message) {
-            this.showMessage('请输入消息');
+            showNotification('请输入消息内容！', 'warning');
             return;
         }
         
         if (message.length > 200) {
-            this.showMessage('消息不能超过200字');
+            showNotification('消息不能超过200字！', 'warning');
             return;
         }
         
-        if (this.state.chatCount >= 5) {
-            this.showMessage('今日对话次数已用完');
+        if (gameState.chatLimit <= 0) {
+            showNotification('今天的对话次数已用完！', 'warning');
             return;
         }
         
-        // 添加到聊天历史
-        this.addChatMessage('user', message);
+        // 添加玩家消息
+        gameState.chatHistory.push({ sender: 'player', content: message });
+        gameState.chatLimit--;
+        gameState.actionsToday++;
         
-        // 调用AI API
-        this.showLoading(true, '系统思考中...');
+        // 清空输入框
+        chatInput.value = '';
+        
+        // 更新显示
+        updateGameDisplay();
+        updateChatDisplay();
+        
+        // 显示加载状态
+        const chatMessages = document.getElementById('chatMessages');
+        const loadingDiv = document.createElement('div');
+        loadingDiv.className = 'message system';
+        loadingDiv.innerHTML = '<div class="message-sender">TL001系统</div>正在思考...';
+        chatMessages.appendChild(loadingDiv);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+        
         try {
-            const response = await fetch(this.API_ENDPOINTS.ai, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    type: 'chat',
-                    messages: this.state.chatHistory,
-                    player: this.state.player,
-                    gameState: {
-                        day: this.state.day,
-                        buildProgress: this.state.buildProgress,
-                        gold: this.state.gold
-                    }
-                })
-            });
+            // 这里应该调用AI API
+            // 由于API密钥需要保密，这里使用模拟响应
+            await new Promise(resolve => setTimeout(resolve, 1000));
             
-            if (!response.ok) throw new Error('AI请求失败');
+            // 模拟AI回复
+            const aiResponses = [
+                "新能源汽车的核心是电池技术，你需要重点关注电池管理系统。",
+                "建造进度已经不错，但要记得平衡各个属性的提升。",
+                "今天的幸运值可能会影响你的工作收益，可以考虑先进行学习。",
+                "别忘了查看排行榜，了解其他玩家的进度。",
+                "如果你遇到困难，可以尝试与其他玩家交流（通过掠夺了解他们的实力）。",
+                "30天的时间很紧张，合理分配行动点是关键。",
+                "你的职业加成在学习相关课程时会非常有用。",
+                "建造车辆需要大量金币，记得经常工作赚取资源。",
+                "每次建造的进度增加是随机的，保持耐心。",
+                "成功逃离需要100%的建造进度，加油！"
+            ];
             
-            const data = await response.json();
-            const aiMessage = data.response || '系统暂时无法回应，请稍后再试。';
-            this.addChatMessage('system', aiMessage);
+            const randomResponse = aiResponses[Math.floor(Math.random() * aiResponses.length)];
+            
+            // 移除加载状态
+            chatMessages.removeChild(loadingDiv);
+            
+            // 添加AI回复
+            gameState.chatHistory.push({ sender: 'system', content: randomResponse });
+            updateChatDisplay();
+            
+            // 记录到日志
+            addToDailyLog(`💬 与TL001系统对话: ${message}`);
             
         } catch (error) {
-            console.error('AI对话失败:', error);
-            this.addChatMessage('system', '系统连接异常，请重试。');
-        } finally {
-            this.showLoading(false);
+            console.error('AI聊天错误:', error);
+            
+            // 移除加载状态
+            chatMessages.removeChild(loadingDiv);
+            
+            // 添加错误回复
+            gameState.chatHistory.push({ 
+                sender: 'system', 
+                content: "抱歉，我现在无法处理你的请求。请检查网络连接或稍后再试。" 
+            });
+            updateChatDisplay();
         }
         
-        if (input) input.value = '';
-        this.state.chatCount++;
-        this.updateGameUI();
+        // 保存游戏进度
+        await saveGame();
     }
 
-    addChatMessage(sender, message) {
-        const history = document.getElementById('chat-history');
-        if (!history) return;
+    // 生成故事
+    async function generateStory() {
+        const storyText = document.getElementById('storyText');
+        const storyLoading = document.getElementById('storyLoading');
         
-        const messageElement = document.createElement('div');
-        messageElement.className = `chat-message ${sender}`;
-        messageElement.innerHTML = `
-            <div class="sender">${sender === 'user' ? '你' : 'TL001系统'}</div>
-            <div class="content">${message}</div>
-        `;
-        history.appendChild(messageElement);
-        history.scrollTop = history.scrollHeight;
+        // 显示加载状态
+        storyText.style.display = 'none';
+        storyLoading.style.display = 'flex';
         
-        this.state.chatHistory.push({ 
-            role: sender === 'user' ? 'user' : 'assistant', 
-            content: message 
-        });
-        
-        // 限制历史记录长度
-        if (this.state.chatHistory.length > 150) {
-            this.state.chatHistory.shift();
-        }
-    }
-
-    // 更新掠夺冷却
-    updateRaidCooldown() {
-        const cooldownElement = document.getElementById('raid-cooldown');
-        if (!cooldownElement) return;
-        
-        if (!this.state.lastRaid) {
-            cooldownElement.textContent = '今日可以掠夺';
-            return;
-        }
-        
-        const lastRaidDate = new Date(this.state.lastRaid);
-        const isSameDay = Utils.isSameDay(lastRaidDate, new Date());
-        
-        if (isSameDay) {
-            cooldownElement.textContent = '今日已掠夺过';
-        } else {
-            cooldownElement.textContent = '今日可以掠夺';
-        }
-    }
-
-    // 更新掠夺目标
-    async updateRaidTargets() {
-        const targetsContainer = document.getElementById('raid-targets');
-        if (!targetsContainer) return;
-        
-        // 这里应该从服务器获取在线玩家列表
-        // 暂时显示模拟数据
-        const mockTargets = [
-            { id: 'target1', codename: '工程师', totalStats: 350, gold: 1200 },
-            { id: 'target2', codename: '猎人', totalStats: 320, gold: 980 },
-            { id: 'target3', codename: '幸存者', totalStats: 310, gold: 850 }
-        ];
-        
-        const noTargetsElement = document.getElementById('no-targets');
-        if (mockTargets.length === 0) {
-            targetsContainer.innerHTML = '';
-            if (noTargetsElement) {
-                noTargetsElement.classList.remove('hidden');
-            }
-            return;
-        }
-        
-        if (noTargetsElement) {
-            noTargetsElement.classList.add('hidden');
-        }
-        
-        targetsContainer.innerHTML = '';
-        
-        mockTargets.forEach(target => {
-            const targetElement = document.createElement('div');
-            targetElement.className = 'raid-target';
-            targetElement.innerHTML = `
-                <div class="target-info">
-                    <div class="target-name">${target.codename}</div>
-                    <div class="target-rank">总属性: ${target.totalStats}</div>
-                </div>
-                <div class="target-stats">
-                    <div class="target-stat">金币: ${target.gold}</div>
-                    <div class="target-stat">可掠夺: ${Math.round(target.gold * 0.1)}</div>
-                </div>
+        try {
+            // 这里应该调用AI API生成故事
+            // 由于API密钥需要保密，这里使用模拟故事
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            
+            const professionName = professions[gameState.player.profession].name;
+            
+            const stories = [
+                `你曾是锈钴城的一名${professionName}，过着平凡的生活。直到那天，战争爆发，城市被封锁，资源开始枯竭。你和其他市民被困在这座逐渐死去的城市中，每天都能感受到希望在一分一秒地流逝。`,
+                `作为锈钴城的${professionName}，你见证了这座城市从繁荣到衰败。封锁令下达后，你尝试过各种方法逃离，但都失败了。就在你几乎绝望时，一个神秘的TL001系统出现在你的脑海中。`,
+                `在锈钴城被封锁的第30天，你几乎放弃了所有希望。作为一名前${professionName}，你目睹了太多人因为绝望而倒下。但今天，一个声音在你的脑海中响起——那是TL001系统，它给你带来了逃离这座城市的唯一希望。`
+            ];
+            
+            const systemMessages = [
+                `"你好，${gameState.player.code}。我是TL001系统，检测到你的生存意志足够强烈，已被选为逃离计划执行者。你有30天时间建造一辆新能源汽车，这是逃离锈钴城的唯一方法。我会全程协助你。"`,
+                `"${gameState.player.code}，听着，我是TL001系统。这座城市即将彻底崩溃，但我有一个计划。在接下来的30天里，你需要学习新能源汽车技术，收集资源，建造一辆能够冲破封锁的车辆。时间紧迫，开始行动吧。"`,
+                `"幸存者${gameState.player.code}，我是TL001系统。锈钴城的资源还能支撑30天，你必须在这段时间内建造一辆新能源汽车逃离。系统将提供必要的技术支持，但主要工作必须由你完成。你的每一个决定都关乎生死。"`
+            ];
+            
+            const randomStory = stories[Math.floor(Math.random() * stories.length)];
+            const randomSystem = systemMessages[Math.floor(Math.random() * systemMessages.length)];
+            
+            storyText.innerHTML = `
+                <p>${randomStory}</p>
+                <p><strong>TL001系统：</strong> ${randomSystem}</p>
             `;
-            targetElement.addEventListener('click', () => this.startRaid(target));
-            targetsContainer.appendChild(targetElement);
-        });
-    }
-
-    // 开始掠夺
-    startRaid(target) {
-        // 检查冷却时间
-        if (this.state.lastRaid && Utils.isSameDay(new Date(this.state.lastRaid), new Date())) {
-            this.showMessage('今日已掠夺过，请明天再来');
-            return;
-        }
-        
-        this.state.raidTarget = target;
-        
-        // 随机选择比拼属性
-        const attributes = ['intelligence', 'strength', 'social', 'charm', 'luck'];
-        const randomAttribute = attributes[Math.floor(Math.random() * attributes.length)];
-        const playerAttribute = this.state.player.stats[randomAttribute];
-        const targetAttribute = Math.floor(Math.random() * 50) + 20; // 模拟对手属性
-        
-        // 显示战斗界面
-        const battleContainer = document.getElementById('raid-battle');
-        const targetsContainer = document.getElementById('raid-targets');
-        
-        if (battleContainer && targetsContainer) {
-            battleContainer.classList.remove('hidden');
-            targetsContainer.classList.add('hidden');
-        }
-        
-        document.getElementById('battle-attribute').textContent = 
-            this.getAttributeName(randomAttribute) + '比拼';
-        document.getElementById('player1-name').textContent = this.state.player.codename;
-        document.getElementById('player1-attr').textContent = playerAttribute;
-        document.getElementById('player2-name').textContent = target.codename;
-        document.getElementById('player2-attr').textContent = targetAttribute;
-        
-        // 判断胜负
-        this.raidResult = {
-            attribute: randomAttribute,
-            playerValue: playerAttribute,
-            targetValue: targetAttribute,
-            playerWins: playerAttribute > targetAttribute,
-            goldToSteal: Math.round(target.gold * 0.1)
-        };
-    }
-
-    // 获取属性中文名称
-    getAttributeName(attribute) {
-        const names = {
-            intelligence: '智力',
-            strength: '武力',
-            social: '交际',
-            charm: '气质',
-            luck: '幸运'
-        };
-        return names[attribute] || attribute;
-    }
-
-    // 确认掠夺结果
-    confirmRaidResult() {
-        const result = this.raidResult;
-        const resultElement = document.getElementById('battle-result');
-        
-        if (!resultElement || !result) return;
-        
-        if (result.playerWins) {
-            this.state.gold += result.goldToSteal;
-            resultElement.innerHTML = `
-                <p style="color: var(--success-color);">掠夺成功！</p>
-                <p>你获得了 ${result.goldToSteal} 金币</p>
-            `;
-        } else {
-            resultElement.innerHTML = `
-                <p style="color: var(--danger-color);">掠夺失败！</p>
-                <p>对方实力太强，你未能掠夺到金币</p>
+            
+        } catch (error) {
+            console.error('生成故事错误:', error);
+            storyText.innerHTML = `
+                <p>你曾是锈钴城的一名普通市民，过着平凡的生活。直到那天，战争爆发，城市被封锁，资源开始枯竭。你和其他市民被困在这座逐渐死去的城市中，每天都能感受到希望在一分一秒地流逝。</p>
+                <p><strong>TL001系统：</strong> "你好，${gameState.player.code}。我是TL001系统，检测到你的生存意志足够强烈，已被选为逃离计划执行者。你有30天时间建造一辆新能源汽车，这是逃离锈钴城的唯一方法。我会全程协助你。"</p>
             `;
         }
         
-        // 更新最后一次掠夺时间
-        this.state.lastRaid = new Date().toISOString();
-        
-        // 恢复界面
-        const battleContainer = document.getElementById('raid-battle');
-        const targetsContainer = document.getElementById('raid-targets');
-        
-        if (battleContainer) {
-            setTimeout(() => {
-                battleContainer.classList.add('hidden');
-                if (targetsContainer) {
-                    targetsContainer.classList.remove('hidden');
-                }
-                this.updateGameUI();
-                this.updateRaidTargets();
-            }, 2000);
-        }
+        // 显示故事
+        storyLoading.style.display = 'none';
+        storyText.style.display = 'block';
     }
 
     // 更新排行榜
-    async updateLeaderboards() {
+    async function updateRankings() {
         try {
-            // 获取实时榜
-            const realtimeResponse = await fetch(`${this.API_ENDPOINTS.leaderboard}?type=realtime`);
-            const realtimeData = await realtimeResponse.json();
+            // 从API获取实时排行榜
+            const result = await API.rankings.get();
+            const liveRankItems = document.getElementById('liveRankItems');
             
-            // 获取荣誉榜
-            const honorResponse = await fetch(`${this.API_ENDPOINTS.leaderboard}?type=honor`);
-            const honorData = await honorResponse.json();
-            
-            this.renderLeaderboard('realtime', realtimeData.leaderboard || []);
-            this.renderLeaderboard('honor', honorData.leaderboard || []);
-            
-        } catch (error) {
-            console.error('获取排行榜失败:', error);
-            // 显示空排行榜
-            this.renderLeaderboard('realtime', []);
-            this.renderLeaderboard('honor', []);
-        }
-    }
-
-    // 渲染排行榜
-    renderLeaderboard(type, data) {
-        const tbodyId = type === 'realtime' ? 'realtime-leaderboard' : 'honor-leaderboard';
-        const tbody = document.getElementById(tbodyId);
-        if (!tbody) return;
-        
-        if (data.length === 0) {
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="${type === 'realtime' ? 6 : 5}" style="text-align: center; padding: 20px;">
-                        暂无数据
-                    </td>
-                </tr>
-            `;
-            return;
-        }
-        
-        tbody.innerHTML = data.map((item, index) => {
-            if (type === 'realtime') {
-                return `
-                    <tr>
-                        <td class="rank-${index + 1}">${index + 1}</td>
-                        <td>${item.codename}</td>
-                        <td>${item.totalStats}</td>
-                        <td>${item.buildProgress}%</td>
-                        <td>${item.gold}</td>
-                        <td>${item.day || 1}</td>
-                    </tr>
-                `;
-            } else {
-                return `
-                    <tr>
-                        <td class="rank-${index + 1}">${index + 1}</td>
-                        <td>${item.realName}</td>
-                        <td>${item.escapes}</td>
-                        <td>${Utils.formatDate(item.firstEscape)}</td>
-                        <td>${Utils.formatDate(item.lastEscape)}</td>
-                    </tr>
-                `;
-            }
-        }).join('');
-    }
-
-    // 切换排行榜标签
-    switchLeaderboardTab(button) {
-        const tab = button.dataset.tab;
-        
-        document.querySelectorAll('.tab-btn').forEach(btn => {
-            btn.classList.remove('active');
-        });
-        button.classList.add('active');
-        
-        document.querySelectorAll('.tab-pane').forEach(pane => {
-            pane.classList.remove('active');
-        });
-        
-        const tabElement = document.getElementById(`${tab}-tab`);
-        if (tabElement) {
-            tabElement.classList.add('active');
-        }
-    }
-
-    // 结局判定
-    async checkEnding() {
-        this.showLoading(true, '生成结局中...');
-        
-        try {
-            const response = await fetch(this.API_ENDPOINTS.ai, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    type: 'ending',
-                    player: this.state.player,
-                    gameState: {
-                        day: this.state.day,
-                        buildProgress: this.state.buildProgress,
-                        gold: this.state.gold,
-                        stats: this.state.player.stats
+            if (liveRankItems && result.rankings) {
+                liveRankItems.innerHTML = '';
+                
+                // 添加当前玩家到排行榜数据中（如果不在API返回中）
+                let allPlayers = result.rankings;
+                
+                if (gameState.player && gameState.gameStarted) {
+                    const currentPlayerInList = allPlayers.find(p => p.id === gameState.playerId);
+                    
+                    if (!currentPlayerInList) {
+                        const totalAttr = gameState.player.intelligence + gameState.player.strength + 
+                                         gameState.player.communication + gameState.player.charm + 
+                                         gameState.player.luck;
+                        
+                        allPlayers.push({
+                            id: gameState.playerId,
+                            code: gameState.player.code,
+                            profession: professions[gameState.player.profession].name,
+                            buildProgress: gameState.buildProgress,
+                            totalAttributes: totalAttr,
+                            day: gameState.day,
+                            isCurrent: true
+                        });
                     }
-                })
-            });
-            
-            if (!response.ok) throw new Error('AI请求失败');
-            
-            const data = await response.json();
-            const ending = data.response || '你的故事已经结束，但锈钴城的故事仍在继续...';
-            const isSuccess = this.state.buildProgress >= 100;
-            
-            this.showEnding(
-                isSuccess ? '成功逃离' : '未能逃离',
-                ending,
-                isSuccess
-            );
-            
-            // 如果成功逃离，记录到荣誉榜
-            if (isSuccess) {
-                await this.recordEscape();
+                }
+                
+                // 按进度排序
+                allPlayers.sort((a, b) => b.buildProgress - a.buildProgress);
+                
+                // 生成排行榜项
+                allPlayers.forEach((player, index) => {
+                    const rankItem = document.createElement('div');
+                    rankItem.className = `rank-item ${player.isCurrent ? 'current-player' : ''}`;
+                    
+                    rankItem.innerHTML = `
+                        <div class="rank-pos ${index < 3 ? 'top-3' : ''}">#${index + 1}</div>
+                        <div class="rank-player">
+                            <div class="player-avatar">${player.code.charAt(0)}</div>
+                            <div>
+                                <div>${player.code}</div>
+                                <div style="font-size: 0.8rem; color: var(--text-muted)">${player.profession}</div>
+                            </div>
+                        </div>
+                        <div class="rank-progress">${player.buildProgress}%</div>
+                        <div class="rank-total">${player.totalAttributes}</div>
+                    `;
+                    
+                    liveRankItems.appendChild(rankItem);
+                });
             }
             
+            // 从API获取荣誉榜
+            try {
+                const honorResult = await API.honor.getAll();
+                const honorItems = document.getElementById('honorItems');
+                
+                if (honorItems) {
+                    if (!honorResult.honors || honorResult.honors.length === 0) {
+                        // 如果没有云端数据，回退到localStorage
+                        const localHonor = JSON.parse(localStorage.getItem('escapeRustCity_honor') || '[]');
+                        
+                        if (localHonor.length === 0) {
+                            honorItems.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 2rem;">暂无荣誉记录</div>';
+                            return;
+                        }
+                        
+                        // 显示本地荣誉记录
+                        localHonor.sort((a, b) => new Date(b.escapedAt) - new Date(a.escapedAt));
+                        const topHonor = localHonor.slice(0, 10);
+                        
+                        honorItems.innerHTML = '';
+                        topHonor.forEach((honor, index) => {
+                            const honorItem = document.createElement('div');
+                            honorItem.className = 'honor-item';
+                            
+                            const date = new Date(honor.escapedAt);
+                            const formattedDate = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
+                            
+                            honorItem.innerHTML = `
+                                <div class="player-avatar">${honor.playerCode.charAt(0)}</div>
+                                <div style="flex: 1;">
+                                    <div style="font-weight: 500; color: var(--text-primary)">${honor.playerCode} (${honor.playerName})</div>
+                                    <div style="font-size: 0.9rem; color: var(--text-secondary)">${professions[honor.profession]?.name || honor.profession} · ${formattedDate}</div>
+                                    <div style="font-size: 0.9rem; margin-top: 0.3rem;">
+                                        <span style="color: var(--light-color)">进度: ${honor.buildProgress}%</span>
+                                        <span style="margin-left: 1rem; color: var(--accent-color)">金币: ${honor.gold}</span>
+                                    </div>
+                                </div>
+                            `;
+                            
+                            honorItems.appendChild(honorItem);
+                        });
+                    } else {
+                        // 显示云端荣誉记录
+                        honorItems.innerHTML = '';
+                        honorResult.honors.forEach((honor, index) => {
+                            const honorItem = document.createElement('div');
+                            honorItem.className = 'honor-item';
+                            
+                            const date = new Date(honor.escapedAt);
+                            const formattedDate = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
+                            
+                            honorItem.innerHTML = `
+                                <div class="player-avatar">${honor.playerCode.charAt(0)}</div>
+                                <div style="flex: 1;">
+                                    <div style="font-weight: 500; color: var(--text-primary)">${honor.playerCode} (${honor.playerName})</div>
+                                    <div style="font-size: 0.9rem; color: var(--text-secondary)">${professions[honor.profession]?.name || honor.profession} · ${formattedDate}</div>
+                                    <div style="font-size: 0.9rem; margin-top: 0.3rem;">
+                                        <span style="color: var(--light-color)">进度: ${honor.buildProgress}%</span>
+                                        <span style="margin-left: 1rem; color: var(--accent-color)">金币: ${honor.gold}</span>
+                                    </div>
+                                </div>
+                            `;
+                            
+                            honorItems.appendChild(honorItem);
+                        });
+                    }
+                }
+            } catch (honorError) {
+                console.warn('无法获取荣誉榜:', honorError);
+                // 显示错误信息
+                const honorItems = document.getElementById('honorItems');
+                if (honorItems) {
+                    honorItems.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 2rem;">无法加载荣誉榜</div>';
+                }
+            }
+            
+            showNotification('排行榜已刷新', 'info');
         } catch (error) {
-            console.error('结局生成失败:', error);
-            this.showEnding(
-                this.state.buildProgress >= 100 ? '成功逃离' : '未能逃离',
-                '你的故事已经结束，但锈钴城的故事仍在继续...',
-                this.state.buildProgress >= 100
-            );
-        } finally {
-            this.showLoading(false);
+            console.error('更新排行榜失败:', error);
+            showNotification('无法加载排行榜数据', 'error');
+            
+            // 回退到本地模拟数据
+            const liveRankItems = document.getElementById('liveRankItems');
+            if (liveRankItems) {
+                liveRankItems.innerHTML = '';
+                
+                // 模拟其他玩家
+                const mockPlayers = [
+                    { code: '疾风', profession: '学生', progress: 65, totalAttr: 320, isCurrent: false },
+                    { code: '铁锤', profession: '警员', progress: 58, totalAttr: 310, isCurrent: false },
+                    { code: '智星', profession: '律师', progress: 72, totalAttr: 350, isCurrent: false },
+                    { code: '银狐', profession: '商人', progress: 80, totalAttr: 380, isCurrent: false },
+                    { code: '流星', profession: '明星', progress: 45, totalAttr: 290, isCurrent: false }
+                ];
+                
+                // 添加当前玩家
+                if (gameState.player && gameState.gameStarted) {
+                    const totalAttr = gameState.player.intelligence + gameState.player.strength + 
+                                     gameState.player.communication + gameState.player.charm + 
+                                     gameState.player.luck;
+                    
+                    mockPlayers.push({
+                        code: gameState.player.code,
+                        profession: professions[gameState.player.profession].name,
+                        progress: gameState.buildProgress,
+                        totalAttr: totalAttr,
+                        isCurrent: true
+                    });
+                }
+                
+                // 按进度排序
+                mockPlayers.sort((a, b) => b.progress - a.progress);
+                
+                // 生成排行榜项
+                mockPlayers.forEach((player, index) => {
+                    const rankItem = document.createElement('div');
+                    rankItem.className = `rank-item ${player.isCurrent ? 'current-player' : ''}`;
+                    
+                    rankItem.innerHTML = `
+                        <div class="rank-pos ${index < 3 ? 'top-3' : ''}">#${index + 1}</div>
+                        <div class="rank-player">
+                            <div class="player-avatar">${player.code.charAt(0)}</div>
+                            <div>
+                                <div>${player.code}</div>
+                                <div style="font-size: 0.8rem; color: var(--text-muted)">${player.profession}</div>
+                            </div>
+                        </div>
+                        <div class="rank-progress">${player.progress}%</div>
+                        <div class="rank-total">${player.totalAttr}</div>
+                    `;
+                    
+                    liveRankItems.appendChild(rankItem);
+                });
+            }
+            
+            // 回退到本地荣誉榜
+            const honorItems = document.getElementById('honorItems');
+            if (honorItems) {
+                const localHonor = JSON.parse(localStorage.getItem('escapeRustCity_honor') || '[]');
+                
+                if (localHonor.length === 0) {
+                    honorItems.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 2rem;">暂无荣誉记录</div>';
+                    return;
+                }
+                
+                localHonor.sort((a, b) => new Date(b.escapedAt) - new Date(a.escapedAt));
+                const topHonor = localHonor.slice(0, 10);
+                
+                honorItems.innerHTML = '';
+                topHonor.forEach((honor, index) => {
+                    const honorItem = document.createElement('div');
+                    honorItem.className = 'honor-item';
+                    
+                    const date = new Date(honor.escapedAt);
+                    const formattedDate = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
+                    
+                    honorItem.innerHTML = `
+                        <div class="player-avatar">${honor.playerCode.charAt(0)}</div>
+                        <div style="flex: 1;">
+                            <div style="font-weight: 500; color: var(--text-primary)">${honor.playerCode} (${honor.playerName})</div>
+                            <div style="font-size: 0.9rem; color: var(--text-secondary)">${professions[honor.profession]?.name || honor.profession} · ${formattedDate}</div>
+                            <div style="font-size: 0.9rem; margin-top: 0.3rem;">
+                                <span style="color: var(--light-color)">进度: ${honor.buildProgress}%</span>
+                                <span style="margin-left: 1rem; color: var(--accent-color)">金币: ${honor.gold}</span>
+                            </div>
+                        </div>
+                    `;
+                    
+                    honorItems.appendChild(honorItem);
+                });
+            }
         }
     }
 
-    // 记录成功逃离
-    async recordEscape() {
-        try {
-            await fetch(this.API_ENDPOINTS.leaderboard, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    type: 'honor',
-                    realName: this.state.player.realName,
-                    codename: this.state.player.codename
-                })
+    // 初始化事件监听器
+    function initEventListeners() {
+        // 创建角色表单提交
+        const creationForm = document.getElementById('creationForm');
+        if (creationForm) {
+            creationForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                
+                // 获取表单数据
+                const playerName = document.getElementById('playerName').value.trim();
+                const playerCode = document.getElementById('playerCode').value.trim();
+                const playerGender = document.getElementById('playerGender').value;
+                const playerProfession = document.getElementById('playerProfession').value;
+                
+                // 验证
+                if (!playerName || !playerCode || !playerGender || !playerProfession) {
+                    showNotification('请填写所有字段！', 'error');
+                    return;
+                }
+                
+                if (playerCode.length > 5) {
+                    showNotification('游戏代号不能超过5个字！', 'error');
+                    return;
+                }
+                
+                // 获取属性值
+                const intelligence = parseInt(document.getElementById('intelligence').value);
+                const strength = parseInt(document.getElementById('strength').value);
+                const communication = parseInt(document.getElementById('communication').value);
+                const charm = parseInt(document.getElementById('charm').value);
+                const luck = parseInt(document.getElementById('luck').value);
+                
+                // 检查属性点总和
+                const totalPoints = intelligence + strength + communication + charm + luck;
+                if (totalPoints !== 80) {
+                    showNotification(`属性点总和必须为80，当前为${totalPoints}`, 'error');
+                    return;
+                }
+                
+                // 创建玩家对象
+                const playerId = generatePlayerId({ name: playerName, code: playerCode });
+                
+                gameState.player = {
+                    name: playerName,
+                    code: playerCode,
+                    gender: playerGender,
+                    profession: playerProfession,
+                    intelligence: intelligence,
+                    strength: strength,
+                    communication: communication,
+                    charm: charm,
+                    luck: luck
+                };
+                
+                gameState.playerId = playerId;
+                
+                // 尝试保存到Cloudflare KV
+                try {
+                    await API.players.create({
+                        id: playerId,
+                        ...gameState.player,
+                        createdAt: new Date().toISOString(),
+                        lastActive: new Date().toISOString()
+                    });
+                } catch (error) {
+                    console.warn('无法保存玩家到云端，使用本地存储:', error);
+                }
+                
+                // 切换到故事导入界面
+                document.getElementById('screenCreation').classList.remove('active');
+                document.getElementById('screenStory').classList.add('active');
+                
+                // 显示玩家代号
+                document.getElementById('storyPlayerCode').textContent = playerCode;
+                
+                // 生成故事
+                generateStory();
             });
-        } catch (error) {
-            console.error('记录逃离失败:', error);
         }
-    }
-
-    // 显示结局
-    showEnding(title, content, isSuccess) {
-        const header = document.getElementById('ending-header');
-        const contentElement = document.getElementById('ending-content');
         
-        if (header && contentElement) {
-            header.innerHTML = `<h2 class="${isSuccess ? 'good-ending' : 'bad-ending'}">${title}</h2>`;
-            contentElement.textContent = content;
-            this.showScreen('ending-screen');
+        // 属性点分配按钮
+        document.querySelectorAll('.attr-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const attr = this.dataset.attr;
+                const action = this.dataset.action;
+                const input = document.getElementById(attr);
+                let value = parseInt(input.value);
+                const remainingPoints = parseInt(document.getElementById('remainingPoints').textContent);
+                
+                if (action === 'increase') {
+                    if (value >= 80) {
+                        showNotification('单个属性不能超过80点！', 'warning');
+                        return;
+                    }
+                    if (remainingPoints <= 0) {
+                        showNotification('没有剩余属性点了！', 'warning');
+                        return;
+                    }
+                    value++;
+                    document.getElementById('remainingPoints').textContent = remainingPoints - 1;
+                } else {
+                    if (value <= 1) {
+                        showNotification('单个属性不能少于1点！', 'warning');
+                        return;
+                    }
+                    value--;
+                    document.getElementById('remainingPoints').textContent = remainingPoints + 1;
+                }
+                
+                input.value = value;
+            });
+        });
+        
+        // 重新生成故事按钮
+        const regenerateStoryBtn = document.getElementById('regenerateStoryBtn');
+        if (regenerateStoryBtn) {
+            regenerateStoryBtn.addEventListener('click', generateStory);
         }
-    }
-
-    // 从结局界面重新开始
-    restartFromEnding() {
-        this.state.reset();
-        this.gameEventsBound = false;
-        this.clearStorage();
-        this.showScreen('create-character-screen');
-    }
-
-    // 查看荣誉榜
-    viewHonorBoard() {
-        this.showScreen('game-screen');
-        this.switchSection(document.querySelector('[data-section="leaderboard"]'));
-    }
-
-    // 确认重启
-    confirmRestart() {
-        this.showConfirm('重新开始游戏', '确定要重新开始吗？所有进度将会丢失。', () => {
-            this.state.reset();
-            this.gameEventsBound = false;
-            this.clearStorage();
-            this.showScreen('create-character-screen');
+        
+        // 开始计划按钮
+        const startPlanBtn = document.getElementById('startPlanBtn');
+        if (startPlanBtn) {
+            startPlanBtn.addEventListener('click', function() {
+                // 切换到游戏主界面
+                document.getElementById('screenStory').classList.remove('active');
+                document.getElementById('screenMain').classList.add('active');
+                
+                // 更新显示
+                updateGameDisplay();
+                
+                // 标记游戏开始
+                gameState.gameStarted = true;
+                
+                // 保存游戏进度
+                saveGame();
+                
+                // 显示欢迎通知
+                showNotification(`欢迎来到锈钴城，${gameState.player.code}！你有30天时间逃离这里。`, 'info');
+                
+                // 更新排行榜
+                updateRankings();
+            });
+        }
+        
+        // 导航按钮
+        document.querySelectorAll('.nav-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                // 移除所有active类
+                document.querySelectorAll('.nav-btn').forEach(b => {
+                    b.classList.remove('active');
+                });
+                
+                // 添加active类到当前按钮
+                this.classList.add('active');
+                
+                // 获取要显示的部分
+                const sectionId = this.dataset.section;
+                
+                // 隐藏所有内容部分
+                document.querySelectorAll('.content-section').forEach(section => {
+                    section.classList.remove('active');
+                });
+                
+                // 显示对应的内容部分
+                const sectionElement = document.getElementById(`section${sectionId.charAt(0).toUpperCase() + sectionId.slice(1)}`);
+                if (sectionElement) {
+                    sectionElement.classList.add('active');
+                }
+                
+                // 如果是排行榜，刷新数据
+                if (sectionId === 'rankings') {
+                    updateRankings();
+                }
+            });
+        });
+        
+        // 标签页按钮
+        document.querySelectorAll('.tab-buttons, .system-tabs, .rank-tabs').forEach(container => {
+            container.addEventListener('click', function(e) {
+                if (e.target.classList.contains('tab-btn')) {
+                    // 移除所有active类
+                    container.querySelectorAll('.tab-btn').forEach(btn => {
+                        btn.classList.remove('active');
+                    });
+                    
+                    // 添加active类到当前按钮
+                    e.target.classList.add('active');
+                    
+                    // 处理不同的标签页
+                    if (container.id === 'workTabs') {
+                        updateWorkDisplay();
+                    } else if (container.id === 'studyTabs') {
+                        updateStudyDisplay();
+                    } else if (container.classList.contains('rank-tabs')) {
+                        // 切换排行榜标签
+                        const tabId = e.target.dataset.rank;
+                        document.querySelectorAll('.tab-content').forEach(content => {
+                            content.classList.remove('active');
+                        });
+                        const contentElement = document.getElementById(`rank${tabId.charAt(0).toUpperCase() + tabId.slice(1)}`);
+                        if (contentElement) {
+                            contentElement.classList.add('active');
+                            if (tabId === 'honor') {
+                                // 刷新荣誉榜
+                                updateRankings();
+                            }
+                        }
+                    }
+                }
+            });
+        });
+        
+        // 发送聊天按钮
+        const sendChatBtn = document.getElementById('sendChatBtn');
+        if (sendChatBtn) {
+            sendChatBtn.addEventListener('click', sendChatMessage);
+        }
+        
+        // 聊天输入框回车发送
+        const chatInput = document.getElementById('chatInput');
+        if (chatInput) {
+            chatInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendChatMessage();
+                }
+            });
+        }
+        
+        // 清空聊天按钮
+        const clearChatBtn = document.getElementById('clearChatBtn');
+        if (clearChatBtn) {
+            clearChatBtn.addEventListener('click', function() {
+                gameState.chatHistory = [];
+                updateChatDisplay();
+                showNotification('聊天记录已清空', 'info');
+            });
+        }
+        
+        // 建造按钮
+        const buildBtn = document.getElementById('buildBtn');
+        if (buildBtn) {
+            buildBtn.addEventListener('click', async function() {
+                if (gameState.actionPoints === 0) {
+                    showNotification('没有行动点了！', 'warning');
+                    return;
+                }
+                
+                const stage = getCurrentBuildStage();
+                
+                // 检查是否满足所有需求
+                for (const [attr, value] of Object.entries(stage.requirements)) {
+                    if (attr === 'gold') {
+                        if (gameState.gold < value) {
+                            showNotification(`金币不足！需要${value}，当前${gameState.gold}`, 'error');
+                            return;
+                        }
+                    } else {
+                        if (gameState.player[attr] < value) {
+                            const attrNames = {
+                                intelligence: '智力',
+                                strength: '武力',
+                                communication: '交际',
+                                charm: '气质'
+                            };
+                            showNotification(`${attrNames[attr]}不足！需要${value}，当前${gameState.player[attr]}`, 'error');
+                            return;
+                        }
+                    }
+                }
+                
+                // 消耗资源
+                gameState.actionPoints--;
+                gameState.gold -= stage.requirements.gold;
+                gameState.actionsToday++;
+                
+                // 增加建造进度（随机5-10%）
+                const progressIncrease = 5 + Math.floor(Math.random() * 6);
+                gameState.buildProgress = Math.min(gameState.buildProgress + progressIncrease, 100);
+                
+                // 显示通知
+                showNotification(`建造完成！进度增加${progressIncrease}%，当前进度${gameState.buildProgress}%`, 'success');
+                addToDailyLog(`🔨 建造车辆: 进度增加${progressIncrease}%，当前${gameState.buildProgress}%`);
+                
+                // 更新显示
+                updateGameDisplay();
+                
+                // 保存游戏进度
+                await saveGame();
+                
+                // 检查是否完成建造
+                if (gameState.buildProgress >= 100) {
+                    setTimeout(() => {
+                        showNotification('恭喜！新能源汽车建造完成！', 'success');
+                    }, 500);
+                }
+            });
+        }
+        
+        // 下一天按钮
+        const nextDayBtn = document.getElementById('nextDayBtn');
+        if (nextDayBtn) {
+            nextDayBtn.addEventListener('click', nextDay);
+        }
+        
+        // 重开游戏按钮
+        const restartBtn = document.getElementById('restartBtn');
+        if (restartBtn) {
+            restartBtn.addEventListener('click', function() {
+                if (confirm('确定要重开游戏吗？当前进度将丢失！')) {
+                    // 清除本地存储
+                    localStorage.removeItem('escapeRustCity_save');
+                    
+                    // 尝试从云端删除玩家数据
+                    if (gameState.playerId) {
+                        API.players.delete(gameState.playerId).catch(console.error);
+                    }
+                    
+                    // 重置游戏状态
+                    resetGameState();
+                    
+                    // 切换到创建角色界面
+                    document.querySelectorAll('.screen').forEach(screen => {
+                        screen.classList.remove('active');
+                    });
+                    document.getElementById('screenCreation').classList.add('active');
+                    
+                    // 重置创建表单
+                    document.getElementById('creationForm').reset();
+                    document.getElementById('remainingPoints').textContent = '80';
+                    ['intelligence', 'strength', 'communication', 'charm', 'luck'].forEach(attr => {
+                        document.getElementById(attr).value = '10';
+                    });
+                    
+                    showNotification('游戏已重置', 'info');
+                }
+            });
+        }
+        
+        // 从结局界面重新开始
+        const restartFromEndingBtn = document.getElementById('restartFromEndingBtn');
+        if (restartFromEndingBtn) {
+            restartFromEndingBtn.addEventListener('click', function() {
+                // 切换到创建角色界面
+                document.querySelectorAll('.screen').forEach(screen => {
+                    screen.classList.remove('active');
+                });
+                document.getElementById('screenCreation').classList.add('active');
+                
+                // 重置创建表单
+                document.getElementById('creationForm').reset();
+                document.getElementById('remainingPoints').textContent = '80';
+                ['intelligence', 'strength', 'communication', 'charm', 'luck'].forEach(attr => {
+                    document.getElementById(attr).value = '10';
+                });
+            });
+        }
+        
+        // 查看荣誉榜按钮
+        const viewHonorBtn = document.getElementById('viewHonorBtn');
+        if (viewHonorBtn) {
+            viewHonorBtn.addEventListener('click', function() {
+                // 切换到主界面并打开排行榜
+                document.querySelectorAll('.screen').forEach(screen => {
+                    screen.classList.remove('active');
+                });
+                document.getElementById('screenMain').classList.add('active');
+                
+                // 激活排行榜标签
+                document.querySelectorAll('.nav-btn').forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                const rankingsBtn = document.querySelector('.nav-btn[data-section="rankings"]');
+                if (rankingsBtn) {
+                    rankingsBtn.classList.add('active');
+                }
+                
+                document.querySelectorAll('.content-section').forEach(section => {
+                    section.classList.remove('active');
+                });
+                document.getElementById('sectionRankings').classList.add('active');
+                
+                // 切换到荣誉榜
+                document.querySelectorAll('.tab-btn').forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                const honorTabBtn = document.querySelector('.rank-tabs .tab-btn[data-rank="honor"]');
+                if (honorTabBtn) {
+                    honorTabBtn.classList.add('active');
+                }
+                
+                document.querySelectorAll('.tab-content').forEach(content => {
+                    content.classList.remove('active');
+                });
+                document.getElementById('rankHonor').classList.add('active');
+                
+                // 刷新荣誉榜
+                updateRankings();
+            });
+        }
+        
+        // 刷新排行榜按钮
+        const refreshRankBtn = document.getElementById('refreshRankBtn');
+        if (refreshRankBtn) {
+            refreshRankBtn.addEventListener('click', updateRankings);
+        }
+        
+        // 音效开关按钮
+        const soundToggle = document.getElementById('soundToggle');
+        if (soundToggle) {
+            soundToggle.addEventListener('click', function() {
+                const icon = this.querySelector('i');
+                if (icon.classList.contains('fa-volume-up')) {
+                    icon.classList.remove('fa-volume-up');
+                    icon.classList.add('fa-volume-mute');
+                    showNotification('音效已关闭', 'info');
+                } else {
+                    icon.classList.remove('fa-volume-mute');
+                    icon.classList.add('fa-volume-up');
+                    showNotification('音效已开启', 'info');
+                }
+            });
+        }
+        
+        // 关闭加载界面
+        window.addEventListener('load', function() {
+            setTimeout(async () => {
+                document.getElementById('loadingOverlay').style.display = 'none';
+                
+                // 尝试加载游戏进度
+                if (await loadGame()) {
+                    // 如果有保存的游戏，直接进入主界面
+                    document.getElementById('screenCreation').classList.remove('active');
+                    document.getElementById('screenMain').classList.add('active');
+                    updateGameDisplay();
+                    showNotification('游戏进度已加载', 'info');
+                    
+                    // 更新排行榜
+                    updateRankings();
+                }
+            }, 1500);
         });
     }
 
-    // 存储管理
-    saveToStorage() {
-        try {
-            localStorage.setItem('escapeRustCobalt', JSON.stringify({
-                player: this.state.player,
-                playerId: this.state.playerId,
-                day: this.state.day,
-                actions: this.state.actions,
-                gold: this.state.gold,
-                buildProgress: this.state.buildProgress,
-                chatHistory: this.state.chatHistory,
-                chatCount: this.state.chatCount,
-                lastRaid: this.state.lastRaid,
-                lastSaved: new Date().toISOString()
-            }));
-        } catch (error) {
-            console.error('保存游戏失败:', error);
-        }
+    // 初始化游戏
+    function initGame() {
+        initEventListeners();
+        console.log('逃离锈钴城游戏已初始化');
     }
 
-    loadFromStorage() {
-        try {
-            const saved = JSON.parse(localStorage.getItem('escapeRustCobalt'));
-            if (saved) {
-                if (saved.player) {
-                    this.state.player = saved.player;
-                    this.state.playerId = saved.playerId;
-                    this.state.day = saved.day || 1;
-                    this.state.actions = saved.actions || 5;
-                    this.state.gold = saved.gold || 0;
-                    this.state.buildProgress = saved.buildProgress || 0;
-                    this.state.chatHistory = saved.chatHistory || [];
-                    this.state.chatCount = saved.chatCount || 0;
-                    this.state.lastRaid = saved.lastRaid || null;
-                    this.state.lastSaved = saved.lastSaved || null;
-                }
-            }
-        } catch (error) {
-            console.error('加载游戏失败:', error);
-            this.clearStorage();
-        }
-    }
-
-    clearStorage() {
-        localStorage.removeItem('escapeRustCobalt');
-    }
-
-    // 工具方法
-    showLoading(show, message = '加载中...') {
-        this.isLoading = show;
-        const loadingScreen = document.getElementById('loading-screen');
-        if (loadingScreen) {
-            if (show) {
-                loadingScreen.classList.remove('hidden');
-                const messageElement = loadingScreen.querySelector('p');
-                if (messageElement) {
-                    messageElement.textContent = message;
-                }
-            } else {
-                loadingScreen.classList.add('hidden');
-            }
-        }
-    }
-
-    showMessage(message) {
-        const toast = document.getElementById('message-toast');
-        const messageElement = document.getElementById('toast-message');
-        
-        if (toast && messageElement) {
-            messageElement.textContent = message;
-            toast.classList.remove('hidden');
-            
-            setTimeout(() => {
-                toast.classList.add('hidden');
-            }, 3000);
-        }
-    }
-
-    showConfirm(title, message, callback) {
-        const titleElement = document.getElementById('confirm-title');
-        const messageElement = document.getElementById('confirm-message');
-        const dialog = document.getElementById('confirm-dialog');
-        
-        if (titleElement && messageElement && dialog) {
-            titleElement.textContent = title;
-            messageElement.textContent = message;
-            dialog.classList.remove('hidden');
-            
-            this.confirmCallback = callback;
-        }
-    }
-
-    hideConfirm() {
-        const dialog = document.getElementById('confirm-dialog');
-        if (dialog) {
-            dialog.classList.add('hidden');
-        }
-        this.confirmCallback = null;
-    }
-
-    confirmAction() {
-        if (this.confirmCallback) {
-            this.confirmCallback();
-        }
-        this.hideConfirm();
-    }
-}
-
-// 初始化游戏
-document.addEventListener('DOMContentLoaded', () => {
-    try {
-        window.game = new GameManager();
-    } catch (error) {
-        console.error('游戏初始化失败:', error);
-        const loadingScreen = document.getElementById('loading-screen');
-        if (loadingScreen) {
-            loadingScreen.innerHTML = `
-                <div style="text-align: center; padding: 50px;">
-                    <h2>游戏加载失败</h2>
-                    <p>${error.message}</p>
-                    <button onclick="location.reload()" class="btn-primary">重新加载</button>
-                </div>
-            `;
-        }
-    }
-});
+    // 启动游戏
+    document.addEventListener('DOMContentLoaded', initGame);
+})();
